@@ -69,6 +69,12 @@ const router = createRouter({
               name: 'WaterQualityWarning',
               component: () => import('@/views/production/WaterQualityWarning.vue'),
               meta: { title: '水质异常预警中心' }
+            },
+            {
+              path: 'sludge-transport',
+              name: 'SludgeTransportDispatch',
+              component: () => import('@/views/production/SludgeTransportDispatch.vue'),
+              meta: { title: '污泥清运调度' }
             }
           ]
         },

@@ -38,7 +38,16 @@ export const productionApi = {
   confirmWaterQualityWarning: (id: number, data: any) => request.put(`/production/water-quality-warnings/${id}/confirm`, data),
   handleWaterQualityWarning: (id: number, data: any) => request.put(`/production/water-quality-warnings/${id}/handle`, data),
   getWaterQualityWarningSnapshot: (id: number) => request.get(`/production/water-quality-warnings/${id}/snapshot`),
-  getWaterQualityTrend: (params?: any) => request.get('/production/water-quality-trend', { params })
+  getWaterQualityTrend: (params?: any) => request.get('/production/water-quality-trend', { params }),
+  getSludgeTransportOrders: (params?: any) => request.get('/production/sludge-transport/orders', { params }),
+  getSludgeTransportStats: () => request.get('/production/sludge-transport/stats'),
+  createSludgeTransportOrder: (data: any) => request.post('/production/sludge-transport/orders', data),
+  updateSludgeTransportOrder: (id: number, data: any) => request.put(`/production/sludge-transport/orders/${id}`, data),
+  dispatchSludgeTransport: (id: number, data: any) => request.post(`/production/sludge-transport/orders/${id}/dispatch`, data),
+  updateSludgeTransportStatus: (id: number, data: any) => request.put(`/production/sludge-transport/orders/${id}/status`, data),
+  getVehicles: () => request.get('/production/sludge-transport/vehicles'),
+  getDrivers: () => request.get('/production/sludge-transport/drivers'),
+  getDestinations: () => request.get('/production/sludge-transport/destinations')
 }
 
 // 安全管理接口

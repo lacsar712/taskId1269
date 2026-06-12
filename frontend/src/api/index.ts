@@ -47,7 +47,12 @@ export const productionApi = {
   updateSludgeTransportStatus: (id: number, data: any) => request.put(`/production/sludge-transport/orders/${id}/status`, data),
   getVehicles: () => request.get('/production/sludge-transport/vehicles'),
   getDrivers: () => request.get('/production/sludge-transport/drivers'),
-  getDestinations: () => request.get('/production/sludge-transport/destinations')
+  getDestinations: () => request.get('/production/sludge-transport/destinations'),
+  getDosingRecords: (params?: any) => request.get('/production/dosing-records', { params }),
+  createDosingRecord: (data: any) => request.post('/production/dosing-records', data),
+  updateDosingRecord: (id: number, data: any) => request.put(`/production/dosing-records/${id}`, data),
+  deleteDosingRecord: (id: number) => request.delete(`/production/dosing-records/${id}`),
+  getDosingStats: (params?: any) => request.get('/production/dosing-stats', { params })
 }
 
 // 安全管理接口

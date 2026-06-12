@@ -75,6 +75,12 @@ const router = createRouter({
               name: 'SludgeTransportDispatch',
               component: () => import('@/views/production/SludgeTransportDispatch.vue'),
               meta: { title: '污泥清运调度' }
+            },
+            {
+              path: 'dosing-record',
+              name: 'DosingRecord',
+              component: () => import('@/views/production/DosingRecord.vue'),
+              meta: { title: '药剂投加记录' }
             }
           ]
         },

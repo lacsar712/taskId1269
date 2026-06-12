@@ -189,6 +189,18 @@ const router = createRouter({
               name: 'EquipmentAnalysis',
               component: () => import('@/views/equipment/EquipmentAnalysis.vue'),
               meta: { title: '设备分析' }
+            },
+            {
+              path: 'contract',
+              name: 'MaintenanceContract',
+              component: () => import('@/views/equipment/MaintenanceContract.vue'),
+              meta: { title: '维保合同管理' }
+            },
+            {
+              path: 'contract-detail',
+              name: 'MaintenanceContractDetail',
+              component: () => import('@/views/equipment/MaintenanceContractDetail.vue'),
+              meta: { title: '维保合同详情' }
             }
           ]
         },

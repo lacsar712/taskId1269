@@ -98,7 +98,18 @@ export const equipmentApi = {
   getMaintenanceRecords: (params?: any) => request.get('/equipment/maintenance/records', { params }),
   getFaults: (params?: any) => request.get('/equipment/faults', { params }),
   createFault: (data: any) => request.post('/equipment/faults', data),
-  getSpareParts: (params?: any) => request.get('/equipment/spareparts', { params })
+  getSpareParts: (params?: any) => request.get('/equipment/spareparts', { params }),
+  getMaintenanceContracts: (params?: any) => request.get('/equipment/maintenance-contracts', { params }),
+  getMaintenanceContractById: (id: number) => request.get(`/equipment/maintenance-contracts/${id}`),
+  createMaintenanceContract: (data: any) => request.post('/equipment/maintenance-contracts', data),
+  updateMaintenanceContract: (id: number, data: any) => request.put(`/equipment/maintenance-contracts/${id}`, data),
+  deleteMaintenanceContract: (id: number) => request.delete(`/equipment/maintenance-contracts/${id}`),
+  renewMaintenanceContract: (id: number, data: any) => request.post(`/equipment/maintenance-contracts/${id}/renew`, data),
+  terminateMaintenanceContract: (id: number, data: any) => request.put(`/equipment/maintenance-contracts/${id}/terminate`, data),
+  getContractRenewHistory: (id: number) => request.get(`/equipment/maintenance-contracts/${id}/renew-history`),
+  getContractEquipmentExec: (id: number, params?: any) => request.get(`/equipment/maintenance-contracts/${id}/equipment-exec`, { params }),
+  getContractStats: () => request.get('/equipment/maintenance-contracts/stats'),
+  exportMaintenanceContracts: (params?: any) => request.get('/equipment/maintenance-contracts/export', { params, responseType: 'blob' })
 }
 
 // 化验管理接口

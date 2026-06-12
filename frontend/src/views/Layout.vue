@@ -67,6 +67,7 @@
             <a-menu-item key="production/abnormal">异常处理</a-menu-item>
             <a-menu-item key="production/optimization">工艺优化</a-menu-item>
             <a-menu-item key="production/alarm">异常告警列表</a-menu-item>
+            <a-menu-item key="production/water-quality-warning">水质异常预警中心</a-menu-item>
           </a-sub-menu>
           
           <a-sub-menu key="safety">

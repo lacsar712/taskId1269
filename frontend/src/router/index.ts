@@ -63,6 +63,12 @@ const router = createRouter({
               name: 'AlarmList',
               component: () => import('@/views/production/AlarmList.vue'),
               meta: { title: '异常告警列表' }
+            },
+            {
+              path: 'water-quality-warning',
+              name: 'WaterQualityWarning',
+              component: () => import('@/views/production/WaterQualityWarning.vue'),
+              meta: { title: '水质异常预警中心' }
             }
           ]
         },

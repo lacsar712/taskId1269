@@ -33,7 +33,12 @@ export const productionApi = {
   createLog: (data: any) => request.post('/production/logs', data),
   getAlarms: (params?: any) => request.get('/production/alarms', { params }),
   handleAlarm: (id: number, data: any) => request.put(`/production/alarms/${id}/handle`, data),
-  getOptimizations: (params?: any) => request.get('/production/optimizations', { params })
+  getOptimizations: (params?: any) => request.get('/production/optimizations', { params }),
+  getWaterQualityWarnings: (params?: any) => request.get('/production/water-quality-warnings', { params }),
+  confirmWaterQualityWarning: (id: number, data: any) => request.put(`/production/water-quality-warnings/${id}/confirm`, data),
+  handleWaterQualityWarning: (id: number, data: any) => request.put(`/production/water-quality-warnings/${id}/handle`, data),
+  getWaterQualityWarningSnapshot: (id: number) => request.get(`/production/water-quality-warnings/${id}/snapshot`),
+  getWaterQualityTrend: (params?: any) => request.get('/production/water-quality-trend', { params })
 }
 
 // 安全管理接口

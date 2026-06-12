@@ -63,7 +63,9 @@ export const productionApi = {
   createHandoverFollowUp: (id: number, data: any) => request.post(`/production/shift-handovers/${id}/follow-ups`, data),
   updateHandoverFollowUp: (id: number, data: any) => request.put(`/production/shift-handovers/follow-ups/${id}`, data),
   deleteHandoverFollowUp: (id: number) => request.delete(`/production/shift-handovers/follow-ups/${id}`),
-  getFactoryMapData: () => request.get('/production/factory-map')
+  getFactoryMapData: () => request.get('/production/factory-map'),
+  getEffluentQualityDisplay: () => request.get('/production/effluent-quality/display'),
+  getEffluentQualityTrend: (params?: any) => request.get('/production/effluent-quality/trend', { params })
 }
 
 // 安全管理接口

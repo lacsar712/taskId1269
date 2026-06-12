@@ -93,6 +93,12 @@ const router = createRouter({
               name: 'FactoryMap',
               component: () => import('@/views/production/FactoryMap.vue'),
               meta: { title: '厂区电子地图' }
+            },
+            {
+              path: 'water-quality-display',
+              name: 'WaterQualityDisplay',
+              component: () => import('@/views/production/WaterQualityDisplay.vue'),
+              meta: { title: '出水水质公示牌' }
             }
           ]
         },

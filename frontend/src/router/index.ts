@@ -99,6 +99,12 @@ const router = createRouter({
               name: 'WaterQualityDisplay',
               component: () => import('@/views/production/WaterQualityDisplay.vue'),
               meta: { title: '出水水质公示牌' }
+            },
+            {
+              path: 'noise-odor-monitor',
+              name: 'NoiseOdorMonitor',
+              component: () => import('@/views/production/NoiseOdorMonitor.vue'),
+              meta: { title: '噪声与臭气监测' }
             }
           ]
         },

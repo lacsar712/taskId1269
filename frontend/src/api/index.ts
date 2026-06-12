@@ -65,7 +65,13 @@ export const productionApi = {
   deleteHandoverFollowUp: (id: number) => request.delete(`/production/shift-handovers/follow-ups/${id}`),
   getFactoryMapData: () => request.get('/production/factory-map'),
   getEffluentQualityDisplay: () => request.get('/production/effluent-quality/display'),
-  getEffluentQualityTrend: (params?: any) => request.get('/production/effluent-quality/trend', { params })
+  getEffluentQualityTrend: (params?: any) => request.get('/production/effluent-quality/trend', { params }),
+  getNoiseOdorMonitorData: () => request.get('/production/noise-odor/monitor'),
+  getNoiseOdorOverRecords: (params?: any) => request.get('/production/noise-odor/over-records', { params }),
+  getNoiseOdorLimits: () => request.get('/production/noise-odor/limits'),
+  createNoiseOdorLimit: (data: any) => request.post('/production/noise-odor/limits', data),
+  updateNoiseOdorLimit: (id: number, data: any) => request.put(`/production/noise-odor/limits/${id}`, data),
+  deleteNoiseOdorLimit: (id: number) => request.delete(`/production/noise-odor/limits/${id}`)
 }
 
 // 安全管理接口

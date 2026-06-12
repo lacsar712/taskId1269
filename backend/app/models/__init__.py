@@ -1,7 +1,8 @@
 from app.models.user import User, Role
 from app.models.production import (
     ProcessParameter, ProductionPlan, ProductionLog, 
-    AbnormalAlarm, ProcessOptimization
+    AbnormalAlarm, ProcessOptimization,
+    ShiftHandover, HandoverFollowUp
 )
 from app.models.safety import (
     InspectionPlan, InspectionRecord, RiskPoint, 
@@ -33,6 +34,7 @@ __all__ = [
     'User', 'Role',
     'ProcessParameter', 'ProductionPlan', 'ProductionLog',
     'AbnormalAlarm', 'ProcessOptimization',
+    'ShiftHandover', 'HandoverFollowUp',
     'InspectionPlan', 'InspectionRecord', 'RiskPoint',
     'EmergencyPlan', 'SafetyTraining', 'WorkPermit',
     'Equipment', 'EquipmentCategory', 'MaintenancePlan',

@@ -81,6 +81,12 @@ const router = createRouter({
               name: 'DosingRecord',
               component: () => import('@/views/production/DosingRecord.vue'),
               meta: { title: '药剂投加记录' }
+            },
+            {
+              path: 'shift-handover',
+              name: 'ShiftHandover',
+              component: () => import('@/views/production/ShiftHandover.vue'),
+              meta: { title: '值班交接班' }
             }
           ]
         },

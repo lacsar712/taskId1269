@@ -1,4 +1,5 @@
-from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, Text, Enum
+from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, Text, Enum, ForeignKey
+from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.database import Base
 import enum
@@ -14,6 +15,19 @@ class AlarmStatus(str, enum.Enum):
     PENDING = "pending"
     PROCESSING = "processing"
     RESOLVED = "resolved"
+
+
+class ShiftType(str, enum.Enum):
+    MORNING = "morning"
+    MIDDLE = "middle"
+    NIGHT = "night"
+
+
+class HandoverStatus(str, enum.Enum):
+    DRAFT = "draft"
+    PENDING_CONFIRM = "pending_confirm"
+    CONFIRMED = "confirmed"
+    ARCHIVED = "archived"
 
 
 class ProcessParameter(Base):
@@ -106,3 +120,53 @@ class ProcessOptimization(Base):
     approved_by = Column(Integer)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class ShiftHandover(Base):
+    """值班交接班记录"""
+    __tablename__ = "shift_handovers"
+
+    id = Column(Integer, primary_key=True, index=True)
+    handover_no = Column(String(50), unique=True, nullable=False)
+    shift_type = Column(String(20), nullable=False)  # morning, middle, night
+    shift_date = Column(DateTime, nullable=False)
+    start_time = Column(DateTime, nullable=False)
+    end_time = Column(DateTime, nullable=False)
+    handover_person_id = Column(Integer)
+    handover_person_name = Column(String(50))
+    takeover_person_id = Column(Integer)
+    takeover_person_name = Column(String(50))
+    water_volume_summary = Column(Text)
+    water_quality_summary = Column(Text)
+    equipment_status = Column(Text)
+    abnormal_notes = Column(Text)
+    status = Column(String(20), default="draft")  # draft, pending_confirm, confirmed, archived
+    handover_confirm_time = Column(DateTime)
+    takeover_confirm_time = Column(DateTime)
+    handover_signature = Column(String(100))
+    takeover_signature = Column(String(100))
+    remark = Column(Text)
+    created_by = Column(Integer)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    follow_up_items = relationship("HandoverFollowUp", back_populates="handover", cascade="all, delete-orphan")
+
+
+class HandoverFollowUp(Base):
+    """交接班待跟进事项"""
+    __tablename__ = "handover_follow_ups"
+
+    id = Column(Integer, primary_key=True, index=True)
+    handover_id = Column(Integer, ForeignKey("shift_handovers.id"), nullable=False)
+    content = Column(Text, nullable=False)
+    priority = Column(String(20), default="normal")  # low, normal, high, urgent
+    deadline = Column(DateTime)
+    responsible_person = Column(String(50))
+    status = Column(String(20), default="pending")  # pending, processing, completed, cancelled
+    completed_time = Column(DateTime)
+    remark = Column(Text)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    handover = relationship("ShiftHandover", back_populates="follow_up_items")

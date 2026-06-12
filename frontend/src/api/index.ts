@@ -52,7 +52,17 @@ export const productionApi = {
   createDosingRecord: (data: any) => request.post('/production/dosing-records', data),
   updateDosingRecord: (id: number, data: any) => request.put(`/production/dosing-records/${id}`, data),
   deleteDosingRecord: (id: number) => request.delete(`/production/dosing-records/${id}`),
-  getDosingStats: (params?: any) => request.get('/production/dosing-stats', { params })
+  getDosingStats: (params?: any) => request.get('/production/dosing-stats', { params }),
+  getShiftHandovers: (params?: any) => request.get('/production/shift-handovers', { params }),
+  getShiftHandover: (id: number) => request.get(`/production/shift-handovers/${id}`),
+  createShiftHandover: (data: any) => request.post('/production/shift-handovers', data),
+  updateShiftHandover: (id: number, data: any) => request.put(`/production/shift-handovers/${id}`, data),
+  deleteShiftHandover: (id: number) => request.delete(`/production/shift-handovers/${id}`),
+  confirmShiftHandover: (id: number, data: any) => request.post(`/production/shift-handovers/${id}/confirm`, data),
+  getHandoverFollowUps: (id: number) => request.get(`/production/shift-handovers/${id}/follow-ups`),
+  createHandoverFollowUp: (id: number, data: any) => request.post(`/production/shift-handovers/${id}/follow-ups`, data),
+  updateHandoverFollowUp: (id: number, data: any) => request.put(`/production/shift-handovers/follow-ups/${id}`, data),
+  deleteHandoverFollowUp: (id: number) => request.delete(`/production/shift-handovers/follow-ups/${id}`)
 }
 
 // 安全管理接口

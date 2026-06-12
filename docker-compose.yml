@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  db:
+    image: mysql:8.0
+    container_name: taskId1269-db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root123
+      MYSQL_DATABASE: water_treatment
+      MYSQL_USER: water_user
+      MYSQL_PASSWORD: water123
+      TZ: Asia/Shanghai
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    ports:
+      - "3306:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./mysql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot123"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - water_network
+
+  backend:
+    build: ./backend
+    container_name: taskId1269-backend
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: mysql+pymysql://water_user:water123@db:3306/water_treatment?charset=utf8mb4
+      SECRET_KEY: water-treatment-secret-key-2024
+      TZ: Asia/Shanghai
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - water_network
+
+  frontend:
+    build: ./frontend
+    container_name: taskId1269-frontend
+    restart: always
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - water_network
+
+networks:
+  water_network:
+    driver: bridge
+
+volumes:
+  db_data:

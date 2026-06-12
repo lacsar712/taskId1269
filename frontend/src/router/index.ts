@@ -87,6 +87,12 @@ const router = createRouter({
               name: 'ShiftHandover',
               component: () => import('@/views/production/ShiftHandover.vue'),
               meta: { title: '值班交接班' }
+            },
+            {
+              path: 'factory-map',
+              name: 'FactoryMap',
+              component: () => import('@/views/production/FactoryMap.vue'),
+              meta: { title: '厂区电子地图' }
             }
           ]
         },

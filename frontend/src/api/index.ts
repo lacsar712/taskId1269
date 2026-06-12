@@ -62,7 +62,8 @@ export const productionApi = {
   getHandoverFollowUps: (id: number) => request.get(`/production/shift-handovers/${id}/follow-ups`),
   createHandoverFollowUp: (id: number, data: any) => request.post(`/production/shift-handovers/${id}/follow-ups`, data),
   updateHandoverFollowUp: (id: number, data: any) => request.put(`/production/shift-handovers/follow-ups/${id}`, data),
-  deleteHandoverFollowUp: (id: number) => request.delete(`/production/shift-handovers/follow-ups/${id}`)
+  deleteHandoverFollowUp: (id: number) => request.delete(`/production/shift-handovers/follow-ups/${id}`),
+  getFactoryMapData: () => request.get('/production/factory-map')
 }
 
 // 安全管理接口

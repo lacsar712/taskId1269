@@ -68,6 +68,7 @@
             <a-menu-item key="production/optimization">工艺优化</a-menu-item>
             <a-menu-item key="production/alarm">异常告警列表</a-menu-item>
             <a-menu-item key="production/water-quality-warning">水质异常预警中心</a-menu-item>
+            <a-menu-item key="production/factory-map">厂区电子地图</a-menu-item>
           </a-sub-menu>
           
           <a-sub-menu key="safety">

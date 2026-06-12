@@ -646,3 +646,237 @@ def delete_handover_follow_up(
     db.delete(follow_up)
     db.commit()
     return MessageResponse(message="删除成功")
+
+
+# ================ 厂区电子地图 ================
+
+class ZoneParameter(BaseModel):
+    name: str
+    code: str
+    value: float
+    unit: str
+    standard: float
+    min: Optional[float] = None
+    max: Optional[float] = None
+    status: str  # normal, warning, error
+
+
+class ZoneAlarm(BaseModel):
+    id: int
+    title: str
+    description: str
+    level: str  # urgent, warning, normal
+    time: datetime
+
+
+class ZoneEquipment(BaseModel):
+    id: int
+    name: str
+    type: str
+    status: str  # running, standby, fault, maintenance
+
+
+class ZoneStat(BaseModel):
+    label: str
+    value: str
+    isWarning: bool = False
+
+
+class ZoneData(BaseModel):
+    id: str
+    name: str
+    x: int
+    y: int
+    width: int
+    height: int
+    color: str
+    status: str  # normal, warning, error
+    alarmCount: int
+    equipmentRunning: int
+    equipmentStandby: int
+    equipmentFault: int
+    equipmentTotal: int
+    stats: List[ZoneStat]
+    parameters: List[ZoneParameter]
+    recentAlarms: List[ZoneAlarm]
+    equipmentList: List[ZoneEquipment]
+
+
+class FactoryMapResponse(BaseModel):
+    zones: List[ZoneData]
+    update_time: datetime
+
+
+@router.get("/factory-map", response_model=FactoryMapResponse)
+def get_factory_map_data(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    from app.models.production import ProcessParameter, AbnormalAlarm
+    from app.models.equipment import Equipment
+
+    now = datetime.now()
+
+    params = db.query(ProcessParameter).all()
+    alarms = db.query(AbnormalAlarm).filter(AbnormalAlarm.status != "resolved").all()
+    equipments = db.query(Equipment).all()
+
+    def get_params_by_zone(zone_id: str) -> List[ZoneParameter]:
+        zone_param_map = {
+            "inlet": ["FLOW_IN", "COD_IN", "NH3N_IN", "PH_IN", "SS_IN", "TEMP"],
+            "grating": ["GRATING_GAP", "GRATING_RESIDUE", "BELT_SPEED", "PRESSURE"],
+            "biological": ["DO", "MLSS", "SV30", "SVI", "MIX_TEMP", "ORP", "INTERNAL_RATIO", "EXTERNAL_RATIO"],
+            "secondary": ["SURFACE_LOAD", "WEIR_LOAD", "HRT", "SS_SEC", "SLUDGE_LEVEL"],
+            "deep": ["TP_DEEP", "FILTER_HEAD", "FILTER_CYCLE", "BACKWASH_INT", "DOSAGE_PAC", "TURBIDITY"],
+            "outlet": ["COD_OUT", "NH3N_OUT", "TP_OUT", "TN_OUT", "SS_OUT", "PH_OUT", "FLOW_OUT"]
+        }
+        param_codes = zone_param_map.get(zone_id, [])
+        result = []
+        for code in param_codes:
+            param = next((p for p in params if p.code == code), None)
+            if param:
+                status = "normal"
+                if param.current_value is not None and param.max_value is not None and param.current_value > param.max_value:
+                    status = "warning" if param.current_value <= param.max_value * 1.1 else "error"
+                result.append(ZoneParameter(
+                    name=param.name,
+                    code=param.code,
+                    value=float(param.current_value or 0),
+                    unit=param.unit or "",
+                    standard=float(param.standard_value or 0),
+                    min=float(param.min_value) if param.min_value else None,
+                    max=float(param.max_value) if param.max_value else None,
+                    status=status
+                ))
+        return result
+
+    def get_alarms_by_zone(zone_id: str) -> List[ZoneAlarm]:
+        zone_alarm_map = {
+            "inlet": ["进水", "提升泵", "流量"],
+            "grating": ["格栅", "栅渣", "压榨"],
+            "biological": ["生化", "曝气", "溶解氧", "DO", "ORP", "MLSS"],
+            "secondary": ["二沉", "沉淀", "污泥"],
+            "deep": ["深度", "过滤", "反洗", "PAC", "除磷"],
+            "outlet": ["出水", "排放", "COD", "氨氮"]
+        }
+        keywords = zone_alarm_map.get(zone_id, [])
+        zone_alarms = []
+        for alarm in alarms:
+            if any(kw in (alarm.title or "") for kw in keywords) or any(kw in (alarm.description or "") for kw in keywords):
+                level = alarm.alarm_level or "normal"
+                if level not in ["urgent", "warning", "normal"]:
+                    level = "normal"
+                zone_alarms.append(ZoneAlarm(
+                    id=alarm.id,
+                    title=alarm.title,
+                    description=alarm.description or "",
+                    level=level,
+                    time=alarm.alarm_time or now
+                ))
+        return zone_alarms[:3]
+
+    def get_equipments_by_zone(zone_id: str) -> List[ZoneEquipment]:
+        zone_equip_map = {
+            "inlet": ["提升泵", "进水"],
+            "grating": ["格栅", "输送机", "压榨机"],
+            "biological": ["曝气", "搅拌器", "回流泵", "排泥泵"],
+            "secondary": ["吸泥机", "刮泥机"],
+            "deep": ["滤池", "反洗", "水泵", "风机", "计量泵"],
+            "outlet": ["监测", "流量计", "消毒"]
+        }
+        keywords = zone_equip_map.get(zone_id, [])
+        zone_equips = []
+        for equip in equipments:
+            if any(kw in (equip.name or "") for kw in keywords) or any(kw in (equip.type or "") for kw in keywords):
+                status = equip.status or "standby"
+                if status not in ["running", "standby", "fault", "maintenance"]:
+                    status = "standby"
+                zone_equips.append(ZoneEquipment(
+                    id=equip.id,
+                    name=equip.name,
+                    type=equip.type or "",
+                    status=status
+                ))
+        return zone_equips[:10]
+
+    zones_config = [
+        {
+            "id": "inlet",
+            "name": "进水区",
+            "x": 50, "y": 100, "width": 140, "height": 180,
+            "color": "#e8f3ff"
+        },
+        {
+            "id": "grating",
+            "name": "格栅间",
+            "x": 240, "y": 180, "width": 140, "height": 160,
+            "color": "#e8ffea"
+        },
+        {
+            "id": "biological",
+            "name": "生化池",
+            "x": 460, "y": 280, "width": 160, "height": 180,
+            "color": "#fff7e8"
+        },
+        {
+            "id": "secondary",
+            "name": "二沉池",
+            "x": 680, "y": 380, "width": 140, "height": 160,
+            "color": "#f0f5ff"
+        },
+        {
+            "id": "deep",
+            "name": "深度处理",
+            "x": 860, "y": 300, "width": 100, "height": 180,
+            "color": "#ffe8e8"
+        },
+        {
+            "id": "outlet",
+            "name": "出水区",
+            "x": 860, "y": 100, "width": 100, "height": 160,
+            "color": "#e8fffc"
+        }
+    ]
+
+    zones = []
+    for config in zones_config:
+        parameters = get_params_by_zone(config["id"])
+        alarms = get_alarms_by_zone(config["id"])
+        equipments = get_equipments_by_zone(config["id"])
+
+        has_error = any(p.status == "error" for p in parameters) or any(a.level == "urgent" for a in alarms)
+        has_warning = any(p.status == "warning" for p in parameters) or any(a.level == "warning" for a in alarms)
+        status = "error" if has_error else "warning" if has_warning else "normal"
+
+        running = sum(1 for e in equipments if e.status == "running")
+        standby = sum(1 for e in equipments if e.status == "standby")
+        fault = sum(1 for e in equipments if e.status == "fault")
+        total = len(equipments)
+
+        stats = []
+        if parameters:
+            for param in parameters[:3]:
+                stats.append(ZoneStat(
+                    label=param.name,
+                    value=f"{param.value} {param.unit}",
+                    isWarning=param.status != "normal"
+                ))
+
+        zones.append(ZoneData(
+            **config,
+            status=status,
+            alarmCount=len(alarms),
+            equipmentRunning=running,
+            equipmentStandby=standby,
+            equipmentFault=fault,
+            equipmentTotal=total,
+            stats=stats,
+            parameters=parameters,
+            recentAlarms=alarms,
+            equipmentList=equipments
+        ))
+
+    return FactoryMapResponse(
+        zones=zones,
+        update_time=now
+    )

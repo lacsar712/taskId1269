@@ -8,6 +8,9 @@
     <a-tabs default-active-key="1">
       <a-tab-pane key="1" title="实时参数监控">
         <div class="filter-bar">
+          <a-tag v-if="selectedZone" color="blue" :closable="true" @close="clearZoneFilter">
+            <icon-location /> {{ sectionNameMapping[selectedZone] }}
+          </a-tag>
           <a-select v-model="selectedSection" placeholder="选择工艺段" style="width: 200px;" allow-clear>
             <a-option value="pretreatment">预处理</a-option>
             <a-option value="bio">生化处理</a-option>
@@ -79,10 +82,32 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { productionApi } from '@/api'
 
+const route = useRoute()
+
+const sectionMapping: Record<string, string> = {
+  'inlet': 'pretreatment',
+  'grating': 'pretreatment',
+  'biological': 'bio',
+  'secondary': 'bio',
+  'deep': 'deep',
+  'outlet': 'deep'
+}
+
+const sectionNameMapping: Record<string, string> = {
+  'inlet': '进水区',
+  'grating': '格栅间',
+  'biological': '生化池',
+  'secondary': '二沉池',
+  'deep': '深度处理',
+  'outlet': '出水区'
+}
+
 const selectedSection = ref('')
+const selectedZone = ref('')
 const parameters = ref<any[]>([])
 
 const processStages = ref([
@@ -170,26 +195,121 @@ const getPercent = (param: any) => {
   return Math.min(100, Math.max(0, ((param.current_value - param.min_value) / range) * 100))
 }
 
+const clearZoneFilter = () => {
+  selectedZone.value = ''
+  selectedSection.value = ''
+  fetchParameters()
+}
+
 const fetchParameters = async () => {
   try {
-    const res: any = await productionApi.getParameters({ process_section: selectedSection.value || undefined })
+    const res: any = await productionApi.getParameters({ 
+      process_section: selectedSection.value || undefined,
+      zone: selectedZone.value || undefined
+    })
     parameters.value = res
   } catch (e) {
-    // 使用模拟数据
-    parameters.value = [
-      { id: 1, name: '溶解氧 DO', code: 'DO', unit: 'mg/L', current_value: 2.5, min_value: 1, max_value: 4, standard_value: 2, status: 'normal' },
-      { id: 2, name: 'pH值', code: 'PH', unit: '', current_value: 7.2, min_value: 6, max_value: 9, standard_value: 7, status: 'normal' },
-      { id: 3, name: '水温', code: 'TEMP', unit: '℃', current_value: 22.5, min_value: 10, max_value: 35, standard_value: 20, status: 'normal' },
-      { id: 4, name: 'MLSS', code: 'MLSS', unit: 'mg/L', current_value: 4200, min_value: 3000, max_value: 5000, standard_value: 4000, status: 'normal' },
-      { id: 5, name: '污泥沉降比', code: 'SV30', unit: '%', current_value: 32, min_value: 20, max_value: 40, standard_value: 30, status: 'normal' },
-      { id: 6, name: '进水流量', code: 'FLOW_IN', unit: 'm³/h', current_value: 650, min_value: 400, max_value: 800, standard_value: 600, status: 'normal' }
-    ]
+    const mockDataByZone: Record<string, any[]> = {
+      'inlet': [
+        { id: 1, name: '进水流量', code: 'FLOW_IN', unit: 'm³/h', current_value: 650, min_value: 400, max_value: 800, standard_value: 600, status: 'normal' },
+        { id: 2, name: '进水COD', code: 'COD_IN', unit: 'mg/L', current_value: 185, min_value: 100, max_value: 300, standard_value: 200, status: 'normal' },
+        { id: 3, name: '进水氨氮', code: 'NH3N_IN', unit: 'mg/L', current_value: 38, min_value: 20, max_value: 60, standard_value: 40, status: 'normal' },
+        { id: 4, name: '进水pH', code: 'PH_IN', unit: '', current_value: 7.2, min_value: 6, max_value: 9, standard_value: 7.5, status: 'normal' },
+        { id: 5, name: '进水SS', code: 'SS_IN', unit: 'mg/L', current_value: 220, min_value: 100, max_value: 350, standard_value: 250, status: 'normal' },
+        { id: 6, name: '水温', code: 'TEMP', unit: '℃', current_value: 22.5, min_value: 10, max_value: 35, standard_value: 20, status: 'normal' }
+      ],
+      'grating': [
+        { id: 1, name: '细格栅间隙', code: 'GRATING_GAP', unit: 'mm', current_value: 10, min_value: 5, max_value: 20, standard_value: 10, status: 'normal' },
+        { id: 2, name: '栅渣量', code: 'GRATING_RESIDUE', unit: 'm³/d', current_value: 0.8, min_value: 0, max_value: 3, standard_value: 1, status: 'normal' },
+        { id: 3, name: '输送皮带转速', code: 'BELT_SPEED', unit: 'm/min', current_value: 5, min_value: 2, max_value: 10, standard_value: 5, status: 'normal' },
+        { id: 4, name: '压榨机压力', code: 'PRESSURE', unit: 'MPa', current_value: 0.6, min_value: 0.3, max_value: 0.8, standard_value: 0.5, status: 'normal' }
+      ],
+      'biological': [
+        { id: 1, name: '溶解氧 DO', code: 'DO', unit: 'mg/L', current_value: 1.8, min_value: 1, max_value: 4, standard_value: 2.5, status: 'warning' },
+        { id: 2, name: 'MLSS', code: 'MLSS', unit: 'mg/L', current_value: 4200, min_value: 3000, max_value: 5000, standard_value: 4000, status: 'normal' },
+        { id: 3, name: '污泥沉降比 SV30', code: 'SV30', unit: '%', current_value: 32, min_value: 20, max_value: 40, standard_value: 30, status: 'normal' },
+        { id: 4, name: '污泥指数 SVI', code: 'SVI', unit: 'mL/g', current_value: 120, min_value: 70, max_value: 150, standard_value: 100, status: 'normal' },
+        { id: 5, name: '混合液温度', code: 'MIX_TEMP', unit: '℃', current_value: 23, min_value: 15, max_value: 30, standard_value: 20, status: 'normal' },
+        { id: 6, name: 'ORP', code: 'ORP', unit: 'mV', current_value: 80, min_value: 50, max_value: 150, standard_value: 100, status: 'warning' },
+        { id: 7, name: '内回流比', code: 'INTERNAL_RATIO', unit: '%', current_value: 200, min_value: 100, max_value: 300, standard_value: 200, status: 'normal' },
+        { id: 8, name: '外回流比', code: 'EXTERNAL_RATIO', unit: '%', current_value: 80, min_value: 50, max_value: 120, standard_value: 80, status: 'normal' }
+      ],
+      'secondary': [
+        { id: 1, name: '表面负荷', code: 'SURFACE_LOAD', unit: 'm/h', current_value: 1.2, min_value: 0.5, max_value: 1.5, standard_value: 1.0, status: 'normal' },
+        { id: 2, name: '溢流堰负荷', code: 'WEIR_LOAD', unit: 'L/(s·m)', current_value: 6, min_value: 2, max_value: 8, standard_value: 5, status: 'normal' },
+        { id: 3, name: '停留时间', code: 'HRT', unit: 'h', current_value: 2.5, min_value: 1.5, max_value: 3.0, standard_value: 2.0, status: 'normal' },
+        { id: 4, name: '出水SS', code: 'SS_SEC', unit: 'mg/L', current_value: 15, min_value: 5, max_value: 30, standard_value: 20, status: 'normal' },
+        { id: 5, name: '污泥界面', code: 'SLUDGE_LEVEL', unit: 'm', current_value: 0.8, min_value: 0.3, max_value: 1.5, standard_value: 1.0, status: 'normal' }
+      ],
+      'deep': [
+        { id: 1, name: '总磷 TP', code: 'TP_DEEP', unit: 'mg/L', current_value: 0.65, min_value: 0.1, max_value: 0.5, standard_value: 0.5, status: 'error' },
+        { id: 2, name: '过滤水头损失', code: 'FILTER_HEAD', unit: 'm', current_value: 2.5, min_value: 0.5, max_value: 3.0, standard_value: 2.0, status: 'warning' },
+        { id: 3, name: '过滤周期', code: 'FILTER_CYCLE', unit: 'h', current_value: 24, min_value: 12, max_value: 48, standard_value: 24, status: 'normal' },
+        { id: 4, name: '反洗强度', code: 'BACKWASH_INT', unit: 'L/(m²·s)', current_value: 15, min_value: 10, max_value: 20, standard_value: 15, status: 'normal' },
+        { id: 5, name: '除磷药剂投加量', code: 'DOSAGE_PAC', unit: 'mg/L', current_value: 15, min_value: 5, max_value: 20, standard_value: 10, status: 'warning' },
+        { id: 6, name: '出水浊度', code: 'TURBIDITY', unit: 'NTU', current_value: 0.8, min_value: 0.1, max_value: 2.0, standard_value: 1.0, status: 'normal' }
+      ],
+      'outlet': [
+        { id: 1, name: '出水COD', code: 'COD_OUT', unit: 'mg/L', current_value: 52, min_value: 0, max_value: 50, standard_value: 50, status: 'warning' },
+        { id: 2, name: '出水氨氮', code: 'NH3N_OUT', unit: 'mg/L', current_value: 4.2, min_value: 0, max_value: 5, standard_value: 5, status: 'normal' },
+        { id: 3, name: '出水总磷', code: 'TP_OUT', unit: 'mg/L', current_value: 0.48, min_value: 0, max_value: 0.5, standard_value: 0.5, status: 'normal' },
+        { id: 4, name: '出水TN', code: 'TN_OUT', unit: 'mg/L', current_value: 14.5, min_value: 0, max_value: 15, standard_value: 15, status: 'normal' },
+        { id: 5, name: '出水SS', code: 'SS_OUT', unit: 'mg/L', current_value: 12, min_value: 0, max_value: 10, standard_value: 10, status: 'warning' },
+        { id: 6, name: '出水pH', code: 'PH_OUT', unit: '', current_value: 7.1, min_value: 6, max_value: 9, standard_value: 7.5, status: 'normal' },
+        { id: 7, name: '出水流量', code: 'FLOW_OUT', unit: 'm³/h', current_value: 640, min_value: 400, max_value: 800, standard_value: 600, status: 'normal' }
+      ]
+    }
+
+    if (selectedZone.value && mockDataByZone[selectedZone.value]) {
+      parameters.value = mockDataByZone[selectedZone.value]
+    } else if (selectedSection.value === 'pretreatment') {
+      parameters.value = [
+        ...mockDataByZone['inlet'],
+        ...mockDataByZone['grating']
+      ]
+    } else if (selectedSection.value === 'bio') {
+      parameters.value = [
+        ...mockDataByZone['biological'],
+        ...mockDataByZone['secondary']
+      ]
+    } else if (selectedSection.value === 'deep') {
+      parameters.value = [
+        ...mockDataByZone['deep'],
+        ...mockDataByZone['outlet']
+      ]
+    } else {
+      parameters.value = [
+        { id: 1, name: '溶解氧 DO', code: 'DO', unit: 'mg/L', current_value: 2.5, min_value: 1, max_value: 4, standard_value: 2, status: 'normal' },
+        { id: 2, name: 'pH值', code: 'PH', unit: '', current_value: 7.2, min_value: 6, max_value: 9, standard_value: 7, status: 'normal' },
+        { id: 3, name: '水温', code: 'TEMP', unit: '℃', current_value: 22.5, min_value: 10, max_value: 35, standard_value: 20, status: 'normal' },
+        { id: 4, name: 'MLSS', code: 'MLSS', unit: 'mg/L', current_value: 4200, min_value: 3000, max_value: 5000, standard_value: 4000, status: 'normal' },
+        { id: 5, name: '污泥沉降比', code: 'SV30', unit: '%', current_value: 32, min_value: 20, max_value: 40, standard_value: 30, status: 'normal' },
+        { id: 6, name: '进水流量', code: 'FLOW_IN', unit: 'm³/h', current_value: 650, min_value: 400, max_value: 800, standard_value: 600, status: 'normal' }
+      ]
+    }
+  }
+}
+
+const initFromRoute = () => {
+  const sectionParam = route.query.section as string
+  if (sectionParam) {
+    selectedZone.value = sectionParam
+    if (sectionMapping[sectionParam]) {
+      selectedSection.value = sectionMapping[sectionParam]
+    }
+    fetchParameters()
   }
 }
 
 onMounted(() => {
-  fetchParameters()
+  initFromRoute()
 })
+
+watch(() => route.query, (newQuery) => {
+  if (newQuery.section) {
+    initFromRoute()
+  }
+}, { deep: true })
 </script>
 
 <style scoped>

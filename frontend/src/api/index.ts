@@ -78,7 +78,14 @@ export const safetyApi = {
   getTrainings: (params?: any) => request.get('/safety/trainings', { params }),
   getPermits: (params?: any) => request.get('/safety/permits', { params }),
   createPermit: (data: any) => request.post('/safety/permits', data),
-  approvePermit: (id: number, approved: boolean) => request.put(`/safety/permits/${id}/approve`, null, { params: { approved } })
+  approvePermit: (id: number, approved: boolean) => request.put(`/safety/permits/${id}/approve`, null, { params: { approved } }),
+  getVisitors: (params?: any) => request.get('/safety/visitors', { params }),
+  createVisitor: (data: any) => request.post('/safety/visitors', data),
+  updateVisitor: (id: number, data: any) => request.put(`/safety/visitors/${id}`, data),
+  deleteVisitor: (id: number) => request.delete(`/safety/visitors/${id}`),
+  checkinVisitor: (id: number, data: any) => request.post(`/safety/visitors/${id}/checkin`, data),
+  checkoutVisitor: (id: number, data: any) => request.post(`/safety/visitors/${id}/checkout`, data),
+  getVisitorStats: (params?: any) => request.get('/safety/visitors/stats', { params })
 }
 
 // 设备管理接口

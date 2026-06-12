@@ -132,6 +132,12 @@ const router = createRouter({
               name: 'WorkPermit',
               component: () => import('@/views/safety/WorkPermit.vue'),
               meta: { title: '作业许可' }
+            },
+            {
+              path: 'visitor',
+              name: 'VisitorManagement',
+              component: () => import('@/views/safety/VisitorManagement.vue'),
+              meta: { title: '访客登记管理' }
             }
           ]
         },

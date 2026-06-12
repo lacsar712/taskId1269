@@ -79,6 +79,7 @@
             <a-menu-item key="safety/emergency">应急管理</a-menu-item>
             <a-menu-item key="safety/training">安全培训</a-menu-item>
             <a-menu-item key="safety/permit">作业许可</a-menu-item>
+            <a-menu-item key="safety/visitor">访客登记管理</a-menu-item>
           </a-sub-menu>
           
           <a-sub-menu key="equipment">

@@ -578,14 +578,43 @@ const filteredPresentVisitors = computed(() => {
   )
 })
 
+const getDateRangeFromFilters = (): [dayjs.Dayjs, dayjs.Dayjs] | null => {
+  if (historyFilters.range_type === 'day' && historyFilters.date) {
+    const d = dayjs(historyFilters.date)
+    return [d.startOf('day'), d.endOf('day')]
+  }
+  if (historyFilters.range_type === 'week' && historyFilters.week) {
+    const d = dayjs(historyFilters.week)
+    return [d.startOf('week'), d.endOf('week')]
+  }
+  if (historyFilters.range_type === 'custom' && historyFilters.date_range?.length === 2) {
+    return [dayjs(historyFilters.date_range[0]).startOf('day'), dayjs(historyFilters.date_range[1]).endOf('day')]
+  }
+  return null
+}
+
 const filteredHistoryVisitors = computed(() => {
-  if (!historyFilters.keyword) return historyVisitors.value
-  const kw = historyFilters.keyword.toLowerCase()
-  return historyVisitors.value.filter(v =>
-    v.visitor_name?.toLowerCase().includes(kw) ||
-    v.company?.toLowerCase().includes(kw) ||
-    v.purpose?.toLowerCase().includes(kw)
-  )
+  const range = getDateRangeFromFilters()
+  let result = historyVisitors.value
+
+  if (range) {
+    const [start, end] = range
+    result = result.filter(v => {
+      const t = dayjs(v.checkin_time)
+      return t.isAfter(start.subtract(1, 'ms')) && t.isBefore(end.add(1, 'ms'))
+    })
+  }
+
+  if (historyFilters.keyword) {
+    const kw = historyFilters.keyword.toLowerCase()
+    result = result.filter(v =>
+      v.visitor_name?.toLowerCase().includes(kw) ||
+      v.company?.toLowerCase().includes(kw) ||
+      v.purpose?.toLowerCase().includes(kw)
+    )
+  }
+
+  return result
 })
 
 const maskIdNumber = (idNumber: string) => {
@@ -695,9 +724,20 @@ const calcStats = () => {
 }
 
 const calcHistoryStats = () => {
-  const visitors = filteredHistoryVisitors.value.length > 0 ? filteredHistoryVisitors.value : historyVisitors.value
+  const visitors = filteredHistoryVisitors.value
+  historyPagination.total = visitors.length
   if (visitors.length === 0) {
-    historyStats.value = null
+    historyStats.value = {
+      total_count: 0,
+      company_count: 0,
+      department_count: 0,
+      avg_duration: 0,
+      max_duration: 0,
+      min_duration: 0
+    }
+    nextTick(() => {
+      renderSummaryChart([])
+    })
     return
   }
 
@@ -724,6 +764,7 @@ const renderSummaryChart = (visitors: any[]) => {
 
   if (summaryChartInstance) {
     summaryChartInstance.dispose()
+    summaryChartInstance = null
   }
 
   summaryChartInstance = echarts.init(summaryChartRef.value)
@@ -740,15 +781,19 @@ const renderSummaryChart = (visitors: any[]) => {
     deptCount[d] = (deptCount[d] || 0) + 1
   })
 
+  const deptEntries = Object.entries(deptCount).sort((a, b) => b[1] - a[1])
+  const deptKeys = deptEntries.map(e => e[0])
+  const deptValues = deptEntries.map(e => e[1])
+
   const option = {
-    grid: { left: '3%', right: '4%', bottom: '3%', top: '15%', containLabel: true },
+    grid: { left: '3%', right: '4%', bottom: '12%', top: '18%', containLabel: true },
     tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-    legend: { data: ['按来访事由分布', '按被访部门分布'], top: 0 },
+    legend: { data: ['来访事由分布', '被访部门分布（按人次排序）'], top: 0 },
     xAxis: [
       {
         type: 'category',
-        data: Object.keys(purposeCount),
-        axisLabel: { rotate: 0 }
+        data: deptKeys.length > 0 ? deptKeys : Object.keys(purposeCount),
+        axisLabel: { interval: 0, rotate: deptKeys.length > 5 ? 20 : 0 }
       }
     ],
     yAxis: [
@@ -760,10 +805,21 @@ const renderSummaryChart = (visitors: any[]) => {
     ],
     series: [
       {
-        name: '按来访事由分布',
+        name: '来访事由分布',
         type: 'bar',
-        data: Object.values(purposeCount),
-        barWidth: '40%',
+        data: deptKeys.length > 0
+          ? deptKeys.map((dk: string) => {
+              const related = visitors.filter(v => (v.contact_department || '未指定') === dk)
+              const purposeMap: Record<string, number> = {}
+              related.forEach(v => {
+                const p = v.purpose || '其他'
+                purposeMap[p] = (purposeMap[p] || 0) + 1
+              })
+              const topPurpose = Object.entries(purposeMap).sort((a, b) => b[1] - a[1])[0]
+              return topPurpose ? topPurpose[1] : 0
+            })
+          : Object.values(purposeCount),
+        barWidth: '28%',
         itemStyle: {
           color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
             { offset: 0, color: '#165DFF' },
@@ -771,129 +827,119 @@ const renderSummaryChart = (visitors: any[]) => {
           ]),
           borderRadius: [4, 4, 0, 0]
         }
+      },
+      {
+        name: '被访部门分布（按人次排序）',
+        type: 'bar',
+        data: deptValues,
+        barWidth: '28%',
+        itemStyle: {
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: '#00B42A' },
+            { offset: 1, color: '#3fc16e' }
+          ]),
+          borderRadius: [4, 4, 0, 0]
+        }
       }
     ]
   }
 
-  summaryChartInstance.setOption(option)
+  if (visitors.length === 0) {
+    summaryChartInstance.setOption({
+      title: {
+        text: '当前日期范围暂无访客数据',
+        left: 'center',
+        top: 'center',
+        textStyle: { color: '#86909c', fontSize: 14, fontWeight: 'normal' }
+      },
+      xAxis: { show: false },
+      yAxis: { show: false },
+      series: [],
+      legend: { show: false }
+    })
+  } else {
+    summaryChartInstance.setOption(option)
+  }
 }
 
 const generateMockData = () => {
   const now = dayjs()
-  const mockData: any[] = [
-    {
-      id: 1,
-      visitor_name: '张伟',
-      id_type: 'id_card',
-      id_number: '110101199001011234',
-      company: '华信环保科技有限公司',
-      purpose: '设备检修',
-      contact_person: '李工',
-      contact_department: '设备部',
-      appointment_time: now.format('YYYY-MM-DD') + ' 09:00:00',
-      checkin_time: now.format('YYYY-MM-DD') + ' 08:55:00',
-      checkout_time: null,
-      status: 'checked_in'
-    },
-    {
-      id: 2,
-      visitor_name: '王芳',
-      id_type: 'id_card',
-      id_number: '310101199203045678',
-      company: '城市建设设计院',
-      purpose: '技术交流',
-      contact_person: '张总',
-      contact_department: '技术部',
-      appointment_time: now.format('YYYY-MM-DD') + ' 10:30:00',
-      checkin_time: now.format('YYYY-MM-DD') + ' 10:20:00',
-      checkout_time: null,
-      status: 'checked_in'
-    },
-    {
-      id: 3,
-      visitor_name: '刘强',
-      id_type: 'driver_license',
-      id_number: '110101198505059999',
-      company: '顺达物流',
-      purpose: '物资配送',
-      contact_person: '王主任',
-      contact_department: '物资部',
-      appointment_time: now.format('YYYY-MM-DD') + ' 14:00:00',
-      checkin_time: now.subtract(3, 'hour').format('YYYY-MM-DD HH:mm:ss'),
-      checkout_time: null,
-      status: 'checked_in'
-    },
-    {
-      id: 4,
-      visitor_name: '赵敏',
-      id_type: 'id_card',
-      id_number: '440101199512128888',
-      company: '市环保局',
-      purpose: '监督检查',
-      contact_person: '陈厂长',
-      contact_department: '厂办',
-      appointment_time: now.subtract(1, 'day').format('YYYY-MM-DD') + ' 14:00:00',
-      checkin_time: now.subtract(1, 'day').format('YYYY-MM-DD') + ' 14:05:00',
-      checkout_time: now.subtract(1, 'day').format('YYYY-MM-DD') + ' 17:30:00',
-      status: 'checked_out'
-    },
-    {
-      id: 5,
-      visitor_name: '孙磊',
-      id_type: 'id_card',
-      id_number: '510101198808087777',
-      company: '华信环保科技有限公司',
-      purpose: '设备检修',
-      contact_person: '李工',
-      contact_department: '设备部',
-      appointment_time: now.subtract(2, 'day').format('YYYY-MM-DD') + ' 09:00:00',
-      checkin_time: now.subtract(2, 'day').format('YYYY-MM-DD') + ' 08:45:00',
-      checkout_time: now.subtract(2, 'day').format('YYYY-MM-DD') + ' 16:20:00',
-      status: 'checked_out'
-    },
-    {
-      id: 6,
-      visitor_name: '周静',
-      id_type: 'passport',
-      id_number: 'E12345678',
-      company: '德国西门子公司',
-      purpose: '商务洽谈',
-      contact_person: '赵经理',
-      contact_department: '采购部',
-      appointment_time: now.subtract(3, 'day').format('YYYY-MM-DD') + ' 13:30:00',
-      checkin_time: now.subtract(3, 'day').format('YYYY-MM-DD') + ' 13:25:00',
-      checkout_time: now.subtract(3, 'day').format('YYYY-MM-DD') + ' 15:45:00',
-      status: 'checked_out'
-    },
-    {
-      id: 7,
-      visitor_name: '吴涛',
-      id_type: 'id_card',
-      id_number: '320101199006066666',
-      company: '市消防支队',
-      purpose: '安全检查',
-      contact_person: '王主任',
-      contact_department: '安环部',
-      appointment_time: now.subtract(4, 'day').format('YYYY-MM-DD') + ' 10:00:00',
-      checkin_time: now.subtract(4, 'day').format('YYYY-MM-DD') + ' 10:00:00',
-      checkout_time: now.subtract(4, 'day').format('YYYY-MM-DD') + ' 12:00:00',
-      status: 'checked_out'
-    },
-    {
-      id: 8,
-      visitor_name: '郑浩',
-      id_type: 'id_card',
-      id_number: '330101198707075555',
-      company: '市政工程公司',
-      purpose: '管道维修',
-      contact_person: '李工',
-      contact_department: '设备部',
-      appointment_time: now.subtract(5, 'day').format('YYYY-MM-DD') + ' 08:30:00',
-      checkin_time: now.subtract(5, 'day').format('YYYY-MM-DD') + ' 08:20:00',
-      checkout_time: now.subtract(5, 'day').format('YYYY-MM-DD') + ' 18:00:00',
-      status: 'checked_out'
-    }
+  const companies = [
+    '华信环保科技有限公司', '城市建设设计院', '顺达物流', '市环保局',
+    '德国西门子公司', '市消防支队', '市政工程公司', '中原建设集团',
+    '东方电气', '南方泵业', '省质检院', '蓝天保洁服务'
   ]
+  const purposes = [
+    '设备检修', '技术交流', '物资配送', '监督检查',
+    '商务洽谈', '安全检查', '管道维修', '参观考察',
+    '面试应聘', '合同签署', '售后维修', '培训学习'
+  ]
+  const contacts = [
+    { name: '李工', dept: '设备部' },
+    { name: '张总', dept: '技术部' },
+    { name: '王主任', dept: '物资部' },
+    { name: '陈厂长', dept: '厂办' },
+    { name: '赵经理', dept: '采购部' },
+    { name: '刘部长', dept: '安环部' },
+    { name: '孙工', dept: '设备部' },
+    { name: '周主管', dept: '人事部' },
+    { name: '吴经理', dept: '生产部' },
+    { name: '郑主任', dept: '综合部' }
+  ]
+  const names = [
+    '张伟', '王芳', '刘强', '赵敏', '孙磊', '周静', '吴涛', '郑浩',
+    '冯刚', '陈丽', '褚明', '卫东', '蒋伟', '沈燕', '韩磊', '杨帆',
+    '朱琳', '秦川', '尤勇', '许晴', '何炅', '吕梁', '史强', '唐宁',
+    '费翔', '岑凯', '薛梅', '雷俊', '贺斌', '倪虹'
+  ]
+  const idTypes = ['id_card', 'id_card', 'id_card', 'id_card', 'passport', 'driver_license', 'other']
+
+  const mockData: any[] = []
+  let id = 1
+
+  const pushRecord = (
+    offsetDays: number,
+    checkinHour: number,
+    checkinMin: number,
+    stayHours: number,
+    isPresent = false
+  ) => {
+    const date = now.subtract(offsetDays, 'day')
+    const checkinTime = date.hour(checkinHour).minute(checkinMin).second(0)
+    const checkoutTime = isPresent ? null : checkinTime.add(stayHours, 'hour')
+    const contact = contacts[Math.floor(Math.random() * contacts.length)]
+    mockData.push({
+      id: id++,
+      visitor_name: names[Math.floor(Math.random() * names.length)],
+      id_type: idTypes[Math.floor(Math.random() * idTypes.length)],
+      id_number: '110101' + String(19800000 + Math.floor(Math.random() * 20000000)) + String(1000 + Math.floor(Math.random() * 9000)),
+      company: companies[Math.floor(Math.random() * companies.length)],
+      purpose: purposes[Math.floor(Math.random() * purposes.length)],
+      contact_person: contact.name,
+      contact_department: contact.dept,
+      appointment_time: checkinTime.subtract(10 + Math.floor(Math.random() * 50), 'minute').format('YYYY-MM-DD HH:mm:ss'),
+      checkin_time: checkinTime.format('YYYY-MM-DD HH:mm:ss'),
+      checkout_time: checkoutTime ? checkoutTime.format('YYYY-MM-DD HH:mm:ss') : null,
+      status: isPresent ? 'checked_in' : 'checked_out'
+    })
+  }
+
+  pushRecord(0, 8, 55, 0, true)
+  pushRecord(0, 10, 20, 0, true)
+  pushRecord(0, 11, 10, 0, true)
+  pushRecord(0, 9, 0, 2)
+  pushRecord(0, 14, 0, 2)
+  pushRecord(0, 15, 30, 1)
+
+  for (let d = 1; d <= 30; d++) {
+    const countPerDay = 2 + Math.floor(Math.random() * 4)
+    for (let i = 0; i < countPerDay; i++) {
+      const hour = 8 + Math.floor(Math.random() * 8)
+      const min = Math.floor(Math.random() * 60)
+      const stay = 1 + Math.floor(Math.random() * 6)
+      pushRecord(d, hour, min, stay)
+    }
+  }
 
   presentVisitors.value = mockData
     .filter(v => !v.checkout_time)
@@ -1109,9 +1155,26 @@ watch(activeTab, (val) => {
   if (val === 'history') {
     nextTick(() => {
       calcHistoryStats()
+      if (summaryChartInstance) summaryChartInstance.resize()
     })
   }
 })
+
+watch(
+  () => [historyFilters.range_type, historyFilters.date, historyFilters.week, historyFilters.date_range, historyFilters.keyword],
+  () => {
+    historyPagination.current = 1
+    calcHistoryStats()
+  },
+  { deep: true }
+)
+
+watch(
+  () => filteredHistoryVisitors.value,
+  () => {
+    historyPagination.total = filteredHistoryVisitors.value.length
+  }
+)
 
 watch(showDetailDrawer, (val) => {
   if (val && summaryChartInstance) {

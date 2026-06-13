@@ -8,6 +8,22 @@
       </div>
       <div class="header-right">
         <a-space :size="16">
+          <a-tooltip content="访客登记（NEW）" position="br">
+            <a-badge :dot="false" :count="'NEW'" :number-style="newBadgeStyle">
+              <a-button
+                :type="'text'"
+                :size="'large'"
+                class="visitor-quick-btn"
+                @click="goVisitorRegister"
+              >
+                <template #icon>
+                  <icon-user-add style="font-size: 18px;" />
+                </template>
+                <span class="visitor-quick-text">访客登记</span>
+              </a-button>
+            </a-badge>
+          </a-tooltip>
+
           <a-dropdown trigger="click">
             <a-space style="cursor: pointer; color: #fff;">
               <a-avatar :size="32" style="background-color: #14C9C9;">
@@ -230,6 +246,21 @@ const handleLogout = () => {
   userStore.logout()
 }
 
+const goVisitorRegister = () => {
+  router.push('/safety/visitor')
+}
+
+const newBadgeStyle = {
+  backgroundColor: '#f53f3f',
+  color: '#fff',
+  fontSize: '10px',
+  lineHeight: '14px',
+  height: '14px',
+  padding: '0 4px',
+  minWidth: 'auto',
+  fontWeight: '600'
+}
+
 watch(
   () => route.path,
   (path) => {
@@ -282,6 +313,29 @@ onMounted(() => {
 .header-right {
   display: flex;
   align-items: center;
+}
+
+.visitor-quick-btn {
+  color: #fff !important;
+  padding: 4px 8px !important;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.12) !important;
+  border-radius: 6px;
+  transition: all 0.25s ease;
+}
+
+.visitor-quick-btn:hover {
+  background: rgba(255, 255, 255, 0.22) !important;
+  transform: translateY(-1px);
+}
+
+.visitor-quick-text {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
 }
 
 .layout-sider {

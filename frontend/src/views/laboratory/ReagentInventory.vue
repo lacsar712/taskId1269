@@ -81,14 +81,12 @@
           v-model="filters.keyword" 
           placeholder="搜索试剂名称/编号/厂家" 
           style="width: 260px;" 
-          @search="fetchReagents" 
         />
         <a-select 
           v-model="filters.category" 
           placeholder="试剂分类" 
           style="width: 140px;" 
           allow-clear
-          @change="fetchReagents"
         >
           <a-option v-for="cat in categories" :key="cat.name" :value="cat.name">
             {{ cat.name }}
@@ -99,12 +97,11 @@
           placeholder="状态" 
           style="width: 120px;" 
           allow-clear
-          @change="fetchReagents"
         >
           <a-option value="active">在用</a-option>
           <a-option value="inactive">停用</a-option>
         </a-select>
-        <a-checkbox v-model="filters.low_stock_only" @change="fetchReagents">
+        <a-checkbox v-model="filters.low_stock_only">
           仅显示低库存
         </a-checkbox>
       </a-space>
@@ -125,7 +122,7 @@
       <a-table 
         :columns="columns" 
         :data="reagentList" 
-        :loading="loading" 
+        :loading="false" 
         :pagination="pagination"
         @page-change="handlePageChange"
         @page-size-change="handlePageSizeChange"
@@ -382,11 +379,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { Message } from '@arco-design/web-vue'
-import { laboratoryApi } from '@/api'
+import { useReagentStore } from '@/stores/reagent'
 
-const loading = ref(false)
+const store = useReagentStore()
+
 const submitLoading = ref(false)
 const applyLoading = ref(false)
 const showReagentModal = ref(false)
@@ -395,16 +393,6 @@ const showApplyModal = ref(false)
 const isEdit = ref(false)
 const currentReagent = ref<any>(null)
 const applyReagent = ref<any>(null)
-const reagentList = ref<any[]>([])
-const lowStockReagents = ref<any[]>([])
-const categories = ref<any[]>([])
-
-const stats = reactive({
-  total: 0,
-  low_stock: 0,
-  near_expiry: 0,
-  categories: 0
-})
 
 const filters = reactive({
   keyword: '',
@@ -438,6 +426,38 @@ const applyForm = reactive({
   apply_quantity: 1,
   urgency: 'normal',
   purpose: ''
+})
+
+const lowStockReagents = computed(() => store.lowStockReagents)
+const stats = computed(() => store.stats)
+const categories = computed(() => store.categories)
+
+const filteredReagents = computed(() => {
+  let list = [...store.reagents]
+  if (filters.keyword) {
+    const kw = filters.keyword.toLowerCase()
+    list = list.filter(item =>
+      item.name.toLowerCase().includes(kw) ||
+      item.reagent_no.toLowerCase().includes(kw) ||
+      (item.manufacturer && item.manufacturer.toLowerCase().includes(kw))
+    )
+  }
+  if (filters.category) {
+    list = list.filter(item => item.category === filters.category)
+  }
+  if (filters.status) {
+    list = list.filter(item => item.status === filters.status)
+  }
+  if (filters.low_stock_only) {
+    list = list.filter(item => item.current_stock <= item.min_safe_stock)
+  }
+  return list
+})
+
+const reagentList = computed(() => {
+  const start = (pagination.current - 1) * pagination.pageSize
+  pagination.total = filteredReagents.value.length
+  return filteredReagents.value.slice(start, start + pagination.pageSize)
 })
 
 const columns = [
@@ -476,125 +496,21 @@ const isExpirySoon = (date: string) => {
   return diffDays <= 30 && diffDays > 0
 }
 
-const fetchStats = async () => {
-  try {
-    const res: any = await laboratoryApi.getReagentStats()
-    Object.assign(stats, res)
-  } catch (e) {
-    stats.total = 15
-    stats.low_stock = 4
-    stats.near_expiry = 2
-    stats.categories = 5
-  }
-}
-
-const fetchLowStockReagents = async () => {
-  try {
-    const res: any = await laboratoryApi.getReagents({
-      page: 1,
-      page_size: 50,
-      low_stock_only: true
-    })
-    lowStockReagents.value = res.items || []
-  } catch (e) {
-    lowStockReagents.value = [
-      { id: 1, name: '浓硫酸', specification: '500ml/瓶', current_stock: 2, min_safe_stock: 5, unit: '瓶' },
-      { id: 2, name: '氢氧化钠', specification: '500g/瓶', current_stock: 3, min_safe_stock: 10, unit: '瓶' },
-      { id: 3, name: '重铬酸钾', specification: '500g/瓶', current_stock: 1, min_safe_stock: 3, unit: '瓶' },
-      { id: 4, name: '硫酸银', specification: '25g/瓶', current_stock: 0, min_safe_stock: 2, unit: '瓶' }
-    ]
-  }
-}
-
-const fetchCategories = async () => {
-  try {
-    const res: any = await laboratoryApi.getReagentCategories()
-    categories.value = res || []
-  } catch (e) {
-    categories.value = [
-      { name: '酸类', count: 4 },
-      { name: '碱类', count: 3 },
-      { name: '盐类', count: 5 },
-      { name: '指示剂', count: 2 },
-      { name: '有机试剂', count: 4 }
-    ]
-  }
-}
-
-const fetchReagents = async () => {
-  loading.value = true
-  try {
-    const res: any = await laboratoryApi.getReagents({
-      page: pagination.current,
-      page_size: pagination.pageSize,
-      keyword: filters.keyword || undefined,
-      category: filters.category || undefined,
-      status: filters.status || undefined,
-      low_stock_only: filters.low_stock_only || undefined
-    })
-    reagentList.value = res.items || []
-    pagination.total = res.total || 0
-  } catch (e) {
-    generateMockData()
-  } finally {
-    loading.value = false
-  }
-}
-
-const generateMockData = () => {
-  const mockData = [
-    { id: 1, reagent_no: 'RGT20240101001', name: '浓硫酸', specification: '500ml/瓶', manufacturer: '国药集团', current_stock: 2, min_safe_stock: 5, storage_location: '酸柜A1', expiry_date: '2025-06-30', unit: '瓶', category: '酸类', purity: '分析纯', cas_no: '7664-93-9', status: 'active', created_at: '2024-01-15 10:30:00' },
-    { id: 2, reagent_no: 'RGT20240101002', name: '氢氧化钠', specification: '500g/瓶', manufacturer: '西陇化工', current_stock: 3, min_safe_stock: 10, storage_location: '碱柜B2', expiry_date: '2025-12-31', unit: '瓶', category: '碱类', purity: '分析纯', cas_no: '1310-73-2', status: 'active', created_at: '2024-01-15 10:31:00' },
-    { id: 3, reagent_no: 'RGT20240101003', name: '重铬酸钾', specification: '500g/瓶', manufacturer: '国药集团', current_stock: 1, min_safe_stock: 3, storage_location: '盐柜C1', expiry_date: '2025-03-15', unit: '瓶', category: '盐类', purity: '基准试剂', cas_no: '7778-50-9', status: 'active', created_at: '2024-01-15 10:32:00' },
-    { id: 4, reagent_no: 'RGT20240101004', name: '硫酸银', specification: '25g/瓶', manufacturer: '阿拉丁', current_stock: 0, min_safe_stock: 2, storage_location: '冷藏柜D1', expiry_date: '2024-08-20', unit: '瓶', category: '盐类', purity: '分析纯', cas_no: '10294-26-5', status: 'active', created_at: '2024-01-15 10:33:00' },
-    { id: 5, reagent_no: 'RGT20240101005', name: '酚酞指示剂', specification: '100ml/瓶', manufacturer: '国药集团', current_stock: 8, min_safe_stock: 5, storage_location: '指示剂架', expiry_date: '2026-01-01', unit: '瓶', category: '指示剂', purity: '指示剂', cas_no: '77-09-8', status: 'active', created_at: '2024-01-15 10:34:00' },
-    { id: 6, reagent_no: 'RGT20240101006', name: '甲醇', specification: '500ml/瓶', manufacturer: '西陇化工', current_stock: 12, min_safe_stock: 6, storage_location: '有机柜E1', expiry_date: '2025-09-10', unit: '瓶', category: '有机试剂', purity: '色谱纯', cas_no: '67-56-1', status: 'active', created_at: '2024-01-15 10:35:00' },
-    { id: 7, reagent_no: 'RGT20240101007', name: '盐酸', specification: '500ml/瓶', manufacturer: '国药集团', current_stock: 6, min_safe_stock: 4, storage_location: '酸柜A2', expiry_date: '2025-07-20', unit: '瓶', category: '酸类', purity: '分析纯', cas_no: '7647-01-0', status: 'active', created_at: '2024-01-15 10:36:00' },
-    { id: 8, reagent_no: 'RGT20240101008', name: '硝酸', specification: '500ml/瓶', manufacturer: '西陇化工', current_stock: 4, min_safe_stock: 3, storage_location: '酸柜A3', expiry_date: '2025-05-15', unit: '瓶', category: '酸类', purity: '优级纯', cas_no: '7697-37-2', status: 'active', created_at: '2024-01-15 10:37:00' }
-  ]
-  
-  let filtered = mockData
-  
-  if (filters.keyword) {
-    filtered = filtered.filter(item => 
-      item.name.includes(filters.keyword) || 
-      item.reagent_no.includes(filters.keyword) ||
-      item.manufacturer.includes(filters.keyword)
-    )
-  }
-  if (filters.category) {
-    filtered = filtered.filter(item => item.category === filters.category)
-  }
-  if (filters.status) {
-    filtered = filtered.filter(item => item.status === filters.status)
-  }
-  if (filters.low_stock_only) {
-    filtered = filtered.filter(item => item.current_stock <= item.min_safe_stock)
-  }
-  
-  const start = (pagination.current - 1) * pagination.pageSize
-  reagentList.value = filtered.slice(start, start + pagination.pageSize)
-  pagination.total = filtered.length
-}
-
 const handleReset = () => {
   filters.keyword = ''
   filters.category = ''
   filters.status = ''
   filters.low_stock_only = false
   pagination.current = 1
-  fetchReagents()
 }
 
 const handlePageChange = (page: number) => {
   pagination.current = page
-  fetchReagents()
 }
 
 const handlePageSizeChange = (pageSize: number) => {
   pagination.pageSize = pageSize
   pagination.current = 1
-  fetchReagents()
 }
 
 const openAddModal = () => {
@@ -633,43 +549,21 @@ const submitReagent = async () => {
   submitLoading.value = true
   try {
     if (isEdit.value && currentReagent.value) {
-      await laboratoryApi.updateReagent(currentReagent.value.id, reagentForm)
+      store.updateReagent(currentReagent.value.id, { ...reagentForm })
       Message.success('更新成功')
     } else {
-      await laboratoryApi.createReagent(reagentForm)
+      store.addReagent({ ...reagentForm })
       Message.success('新增成功')
     }
     showReagentModal.value = false
-    fetchReagents()
-    fetchStats()
-    fetchLowStockReagents()
-  } catch (e) {
-    Message.success(isEdit.value ? '更新成功' : '新增成功')
-    showReagentModal.value = false
-    fetchReagents()
-    fetchStats()
-    fetchLowStockReagents()
   } finally {
     submitLoading.value = false
   }
 }
 
 const deleteReagent = async (record: any) => {
-  try {
-    await laboratoryApi.deleteReagent(record.id)
-    Message.success('已停用')
-    fetchReagents()
-    fetchStats()
-    fetchLowStockReagents()
-  } catch (e) {
-    const idx = reagentList.value.findIndex(r => r.id === record.id)
-    if (idx > -1) {
-      reagentList.value[idx].status = 'inactive'
-    }
-    Message.success('已停用')
-    fetchStats()
-    fetchLowStockReagents()
-  }
+  store.deactivateReagent(record.id)
+  Message.success('已停用')
 }
 
 const viewReagent = (record: any) => {
@@ -679,8 +573,8 @@ const viewReagent = (record: any) => {
 
 const scrollToReagent = (item: any) => {
   filters.keyword = item.name
+  filters.low_stock_only = false
   pagination.current = 1
-  fetchReagents()
 }
 
 const openApplyModal = (record: any) => {
@@ -699,27 +593,26 @@ const submitApply = async () => {
   
   applyLoading.value = true
   try {
-    await laboratoryApi.createReplenishment({
-      reagent_id: applyReagent.value?.id,
+    const result = store.addReplenishment({
+      reagent_id: applyReagent.value.id,
       apply_quantity: applyForm.apply_quantity,
       urgency: applyForm.urgency,
       purpose: applyForm.purpose
     })
-    Message.success('申请已提交')
-    showApplyModal.value = false
-  } catch (e) {
-    Message.success('申请已提交')
-    showApplyModal.value = false
+    if (result) {
+      Message.success('申请已提交，可在补货申请管理页查看审批进度')
+      showApplyModal.value = false
+    } else {
+      Message.error('提交失败，未找到对应试剂')
+    }
   } finally {
     applyLoading.value = false
   }
 }
 
 onMounted(() => {
-  fetchStats()
-  fetchLowStockReagents()
-  fetchCategories()
-  fetchReagents()
+  store.fetchReagents()
+  store.fetchCategories()
 })
 </script>
 

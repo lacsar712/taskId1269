@@ -64,14 +64,12 @@
           v-model="filters.keyword" 
           placeholder="搜索申请编号/试剂名称" 
           style="width: 240px;" 
-          @search="fetchData" 
         />
         <a-select 
           v-model="filters.urgency" 
           placeholder="紧急程度" 
           style="width: 120px;" 
           allow-clear
-          @change="fetchData"
         >
           <a-option value="urgent">紧急</a-option>
           <a-option value="normal">普通</a-option>
@@ -81,7 +79,6 @@
           v-model="filters.date_range" 
           :placeholder="['开始日期', '结束日期']"
           style="width: 240px;"
-          @change="fetchData"
         />
       </a-space>
       <a-button type="primary" @click="openApplyModal" v-if="isLabUser">
@@ -95,7 +92,7 @@
       <a-table 
         :columns="columns" 
         :data="dataList" 
-        :loading="loading" 
+        :loading="false" 
         :pagination="pagination"
         @page-change="handlePageChange"
         @page-size-change="handlePageSizeChange"
@@ -406,11 +403,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, computed } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { Message } from '@arco-design/web-vue'
-import { laboratoryApi } from '@/api'
+import { useReagentStore } from '@/stores/reagent'
 
-const loading = ref(false)
+const store = useReagentStore()
+
 const applyLoading = ref(false)
 const approveLoading = ref(false)
 const purchaseLoading = ref(false)
@@ -419,24 +417,16 @@ const showApproveModal = ref(false)
 const showPurchaseModal = ref(false)
 const showDetailDrawer = ref(false)
 const activeTab = ref('all')
-const dataList = ref<any[]>([])
 const currentRecord = ref<any>(null)
-const reagentOptions = ref<any[]>([])
 const selectedReagent = ref<any>(null)
 const isLabUser = ref(true)
 const isAdmin = ref(true)
 
-const stats = reactive({
-  pending: 0,
-  approved: 0,
-  purchasing: 0,
-  completed: 0
-})
+const stats = computed(() => store.replenishmentStats)
 
 const filters = reactive({
   keyword: '',
   urgency: '',
-  status: '',
   date_range: [] as any[]
 })
 
@@ -445,6 +435,8 @@ const pagination = reactive({
   pageSize: 10,
   total: 0
 })
+
+const reagentOptions = computed(() => store.activeReagents)
 
 const applyForm = reactive({
   reagent_id: null as number | null,
@@ -464,6 +456,38 @@ const purchaseForm = reactive({
   purchaser: '',
   expected_date: '',
   purchase_remark: ''
+})
+
+const filteredReplenishments = computed(() => {
+  let list = [...store.replenishments]
+  if (activeTab.value !== 'all') {
+    list = list.filter(item => item.status === activeTab.value)
+  }
+  if (filters.keyword) {
+    const kw = filters.keyword.toLowerCase()
+    list = list.filter(item =>
+      item.application_no.toLowerCase().includes(kw) ||
+      item.reagent_name.toLowerCase().includes(kw)
+    )
+  }
+  if (filters.urgency) {
+    list = list.filter(item => item.urgency === filters.urgency)
+  }
+  if (filters.date_range && filters.date_range.length === 2) {
+    const start = new Date(filters.date_range[0])
+    const end = new Date(filters.date_range[1])
+    list = list.filter(item => {
+      const d = new Date(item.apply_time)
+      return d >= start && d <= end
+    })
+  }
+  return list
+})
+
+const dataList = computed(() => {
+  const start = (pagination.current - 1) * pagination.pageSize
+  pagination.total = filteredReplenishments.value.length
+  return filteredReplenishments.value.slice(start, start + pagination.pageSize)
 })
 
 const columns = [
@@ -557,110 +581,18 @@ const getPurchaseStepStatus = () => {
   return 'wait'
 }
 
-const fetchStats = async () => {
-  try {
-    const [pendingRes, approvedRes, purchasingRes, completedRes] = await Promise.all([
-      laboratoryApi.getReplenishments({ status: 'pending', page_size: 1 }),
-      laboratoryApi.getReplenishments({ status: 'approved', page_size: 1 }),
-      laboratoryApi.getReplenishments({ status: 'purchasing', page_size: 1 }),
-      laboratoryApi.getReplenishments({ status: 'completed', page_size: 1 })
-    ])
-    stats.pending = (pendingRes as any).total || 0
-    stats.approved = (approvedRes as any).total || 0
-    stats.purchasing = (purchasingRes as any).total || 0
-    stats.completed = (completedRes as any).total || 0
-  } catch (e) {
-    stats.pending = 3
-    stats.approved = 2
-    stats.purchasing = 1
-    stats.completed = 5
-  }
-}
-
-const fetchReagentOptions = async () => {
-  try {
-    const res: any = await laboratoryApi.getReagents({ page_size: 100 })
-    reagentOptions.value = res.items || []
-  } catch (e) {
-    reagentOptions.value = [
-      { id: 1, name: '浓硫酸', specification: '500ml/瓶', current_stock: 2, min_safe_stock: 5, unit: '瓶' },
-      { id: 2, name: '氢氧化钠', specification: '500g/瓶', current_stock: 3, min_safe_stock: 10, unit: '瓶' },
-      { id: 3, name: '重铬酸钾', specification: '500g/瓶', current_stock: 1, min_safe_stock: 3, unit: '瓶' },
-      { id: 4, name: '硫酸银', specification: '25g/瓶', current_stock: 0, min_safe_stock: 2, unit: '瓶' },
-      { id: 5, name: '酚酞指示剂', specification: '100ml/瓶', current_stock: 8, min_safe_stock: 5, unit: '瓶' }
-    ]
-  }
-}
-
-const fetchData = async () => {
-  loading.value = true
-  try {
-    const params: any = {
-      page: pagination.current,
-      page_size: pagination.pageSize,
-      keyword: filters.keyword || undefined,
-      urgency: filters.urgency || undefined
-    }
-    
-    if (activeTab.value !== 'all') {
-      params.status = activeTab.value
-    }
-    
-    const res: any = await laboratoryApi.getReplenishments(params)
-    dataList.value = res.items || []
-    pagination.total = res.total || 0
-  } catch (e) {
-    generateMockData()
-  } finally {
-    loading.value = false
-  }
-}
-
-const generateMockData = () => {
-  const mockData = [
-    { id: 1, application_no: 'RPL20240115001', reagent_id: 1, reagent_name: '浓硫酸', specification: '500ml/瓶', apply_quantity: 10, unit: '瓶', urgency: 'urgent', purpose: 'COD检测日常消耗，库存不足', applicant_name: '李化验员', apply_time: '2024-01-15 09:30:00', status: 'pending', approver_name: null, approve_time: null, approve_remark: null, purchase_quantity: null, purchase_status: 'not_started', purchaser: null, expected_date: null, purchase_remark: null },
-    { id: 2, application_no: 'RPL20240115002', reagent_id: 4, reagent_name: '硫酸银', specification: '25g/瓶', apply_quantity: 5, unit: '瓶', urgency: 'urgent', purpose: 'COD检测急需，已断货', applicant_name: '张化验员', apply_time: '2024-01-15 10:15:00', status: 'approved', approver_name: '王主任', approve_time: '2024-01-15 11:00:00', approve_remark: '同意采购，尽快安排', purchase_quantity: 5, purchase_status: 'in_progress', purchaser: '刘采购', expected_date: '2024-01-20', purchase_remark: '已向国药集团下单' },
-    { id: 3, application_no: 'RPL20240114003', reagent_id: 2, reagent_name: '氢氧化钠', specification: '500g/瓶', apply_quantity: 20, unit: '瓶', urgency: 'normal', purpose: '月度常规补货', applicant_name: '李化验员', apply_time: '2024-01-14 14:20:00', status: 'purchasing', approver_name: '王主任', approve_time: '2024-01-14 16:00:00', approve_remark: '同意，本月采购计划内', purchase_quantity: 20, purchase_status: 'delivered', purchaser: '刘采购', expected_date: '2024-01-18', purchase_remark: '货物已到，待验收入库' },
-    { id: 4, application_no: 'RPL20240110004', reagent_id: 5, reagent_name: '酚酞指示剂', specification: '100ml/瓶', apply_quantity: 10, unit: '瓶', urgency: 'low', purpose: '备用库存补充', applicant_name: '赵化验员', apply_time: '2024-01-10 08:45:00', status: 'completed', approver_name: '王主任', approve_time: '2024-01-10 10:30:00', approve_remark: '同意', purchase_quantity: 10, purchase_status: 'completed', purchaser: '刘采购', expected_date: '2024-01-15', purchase_remark: '已验收入库' },
-    { id: 5, application_no: 'RPL20240108005', reagent_id: 3, reagent_name: '重铬酸钾', specification: '500g/瓶', apply_quantity: 3, unit: '瓶', urgency: 'normal', purpose: '基准试剂补充', applicant_name: '张化验员', apply_time: '2024-01-08 15:30:00', status: 'completed', approver_name: '王主任', approve_time: '2024-01-08 17:00:00', approve_remark: '同意采购', purchase_quantity: 3, purchase_status: 'completed', purchaser: '刘采购', expected_date: '2024-01-12', purchase_remark: '已到货并验收' },
-    { id: 6, application_no: 'RPL20240105006', reagent_id: 6, reagent_name: '甲醇', specification: '500ml/瓶', apply_quantity: 10, unit: '瓶', urgency: 'normal', purpose: '色谱分析用', applicant_name: '李化验员', apply_time: '2024-01-05 09:00:00', status: 'rejected', approver_name: '王主任', approve_time: '2024-01-05 11:00:00', approve_remark: '库存还充足，下月再采购', purchase_quantity: null, purchase_status: 'not_started', purchaser: null, expected_date: null, purchase_remark: null }
-  ]
-  
-  let filtered = mockData
-  
-  if (activeTab.value !== 'all') {
-    filtered = filtered.filter(item => item.status === activeTab.value)
-  }
-  if (filters.keyword) {
-    filtered = filtered.filter(item => 
-      item.application_no.includes(filters.keyword) || 
-      item.reagent_name.includes(filters.keyword)
-    )
-  }
-  if (filters.urgency) {
-    filtered = filtered.filter(item => item.urgency === filters.urgency)
-  }
-  
-  const start = (pagination.current - 1) * pagination.pageSize
-  dataList.value = filtered.slice(start, start + pagination.pageSize)
-  pagination.total = filtered.length
-}
-
 const handleTabClick = (key: string) => {
   activeTab.value = key
   pagination.current = 1
-  fetchData()
 }
 
 const handlePageChange = (page: number) => {
   pagination.current = page
-  fetchData()
 }
 
 const handlePageSizeChange = (pageSize: number) => {
   pagination.pageSize = pageSize
   pagination.current = 1
-  fetchData()
 }
 
 const openApplyModal = () => {
@@ -694,16 +626,18 @@ const submitApply = async () => {
   
   applyLoading.value = true
   try {
-    await laboratoryApi.createReplenishment(applyForm)
-    Message.success('申请提交成功')
-    showApplyModal.value = false
-    fetchData()
-    fetchStats()
-  } catch (e) {
-    Message.success('申请提交成功')
-    showApplyModal.value = false
-    fetchData()
-    fetchStats()
+    const result = store.addReplenishment({
+      reagent_id: applyForm.reagent_id,
+      apply_quantity: applyForm.apply_quantity,
+      urgency: applyForm.urgency,
+      purpose: applyForm.purpose
+    })
+    if (result) {
+      Message.success('申请提交成功')
+      showApplyModal.value = false
+    } else {
+      Message.error('提交失败，未找到对应试剂')
+    }
   } finally {
     applyLoading.value = false
   }
@@ -725,26 +659,17 @@ const openApproveModal = (record: any) => {
 const submitApprove = async () => {
   approveLoading.value = true
   try {
-    await laboratoryApi.approveReplenishment(currentRecord.value.id, approveForm)
-    Message.success('审批成功')
-    showApproveModal.value = false
-    fetchData()
-    fetchStats()
-  } catch (e) {
-    Message.success('审批成功')
-    showApproveModal.value = false
-    const idx = dataList.value.findIndex(r => r.id === currentRecord.value.id)
-    if (idx > -1) {
-      dataList.value[idx].status = approveForm.status
-      dataList.value[idx].approver_name = '当前用户'
-      dataList.value[idx].approve_time = new Date().toLocaleString()
-      dataList.value[idx].approve_remark = approveForm.approve_remark
-      if (approveForm.status === 'approved') {
-        dataList.value[idx].purchase_quantity = approveForm.purchase_quantity
-        dataList.value[idx].purchase_status = 'not_started'
-      }
+    const result = store.approveReplenishment(currentRecord.value.id, {
+      status: approveForm.status,
+      approve_remark: approveForm.approve_remark,
+      purchase_quantity: approveForm.purchase_quantity
+    })
+    if (result) {
+      Message.success(approveForm.status === 'approved' ? '已批准，等待采购' : '已拒绝')
+      showApproveModal.value = false
+    } else {
+      Message.error('审批失败，该申请当前状态不允许审批')
     }
-    fetchStats()
   } finally {
     approveLoading.value = false
   }
@@ -762,37 +687,30 @@ const openPurchaseModal = (record: any) => {
 const submitPurchaseUpdate = async () => {
   purchaseLoading.value = true
   try {
-    await laboratoryApi.updatePurchaseStatus(currentRecord.value.id, purchaseForm)
-    Message.success('采购进度已更新')
-    showPurchaseModal.value = false
-    fetchData()
-    fetchStats()
-  } catch (e) {
-    Message.success('采购进度已更新')
-    showPurchaseModal.value = false
-    const idx = dataList.value.findIndex(r => r.id === currentRecord.value.id)
-    if (idx > -1) {
-      dataList.value[idx].purchase_status = purchaseForm.purchase_status
-      dataList.value[idx].purchaser = purchaseForm.purchaser
-      dataList.value[idx].expected_date = purchaseForm.expected_date
-      dataList.value[idx].purchase_remark = purchaseForm.purchase_remark
-      
+    const result = store.updatePurchaseStatus(currentRecord.value.id, {
+      purchase_status: purchaseForm.purchase_status,
+      purchaser: purchaseForm.purchaser,
+      expected_date: purchaseForm.expected_date,
+      purchase_remark: purchaseForm.purchase_remark
+    })
+    if (result) {
       if (purchaseForm.purchase_status === 'completed') {
-        dataList.value[idx].status = 'completed'
-      } else if (['in_progress', 'delivered'].includes(purchaseForm.purchase_status)) {
-        dataList.value[idx].status = 'purchasing'
+        Message.success('采购完成，库存已自动更新')
+      } else {
+        Message.success('采购进度已更新')
       }
+      showPurchaseModal.value = false
+    } else {
+      Message.error('更新失败，该申请当前状态不允许更新采购进度')
     }
-    fetchStats()
   } finally {
     purchaseLoading.value = false
   }
 }
 
 onMounted(() => {
-  fetchStats()
-  fetchData()
-  fetchReagentOptions()
+  store.fetchReplenishments()
+  store.fetchReagents()
 })
 </script>
 

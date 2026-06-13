@@ -787,14 +787,15 @@ def get_factory_map_data(
         keywords = zone_equip_map.get(zone_id, [])
         zone_equips = []
         for equip in equipments:
-            if any(kw in (equip.name or "") for kw in keywords) or any(kw in (equip.type or "") for kw in keywords):
+            equip_type = equip.process_section or equip.model or ""
+            if any(kw in (equip.name or "") for kw in keywords) or any(kw in equip_type for kw in keywords):
                 status = equip.status or "standby"
                 if status not in ["running", "standby", "fault", "maintenance"]:
                     status = "standby"
                 zone_equips.append(ZoneEquipment(
                     id=equip.id,
                     name=equip.name,
-                    type=equip.type or "",
+                    type=equip_type,
                     status=status
                 ))
         return zone_equips[:10]
@@ -880,3 +881,596 @@ def get_factory_map_data(
         zones=zones,
         update_time=now
     )
+
+
+# =====================================================================
+# 水质异常预警中心
+# =====================================================================
+
+class WaterQualityWarningItem(BaseModel):
+    id: str
+    warning_no: str
+    indicator_type: str
+    process_unit: str
+    level: str  # urgent, warning, normal
+    status: str  # pending, confirmed, processing, resolved
+    measured_value: float
+    limit_value: float
+    unit: str
+    deviation: float
+    deviation_percent: float
+    trigger_time: str
+    duration: Optional[str] = None
+    source: Optional[str] = "在线监测"
+    device_name: Optional[str] = None
+    confirmer: Optional[str] = None
+    confirm_time: Optional[str] = None
+    root_cause: Optional[str] = None
+    handler: Optional[str] = None
+    handle_description: Optional[str] = None
+    snapshot_data: Optional[List[float]] = None
+
+
+class IndicatorDistributionItem(BaseModel):
+    name: str
+    label: str
+    count: int
+    percent: int
+    color: str
+
+
+class WaterQualityStats(BaseModel):
+    total: int
+    pending: int
+    processing: int
+    resolved: int
+
+
+class WaterQualityWarningsResponse(BaseModel):
+    items: List[WaterQualityWarningItem]
+    total: int
+    stats: WaterQualityStats
+    indicator_distribution: List[IndicatorDistributionItem]
+
+
+# 模块级内存存储（首次访问时生成，跨请求保持状态）
+_WQ_INDICATOR_META = {
+    "COD": {"label": "COD", "unit": "mg/L", "color": "#165DFF", "limit": 50.0},
+    "NH3N": {"label": "氨氮", "unit": "mg/L", "color": "#00b42a", "limit": 5.0},
+    "TP": {"label": "总磷", "unit": "mg/L", "color": "#ff7d00", "limit": 0.5},
+    "SS": {"label": "SS", "unit": "mg/L", "color": "#722ed1", "limit": 20.0},
+    "TN": {"label": "总氮", "unit": "mg/L", "color": "#f53f3f", "limit": 15.0},
+    "PH": {"label": "pH", "unit": "", "color": "#14c9c9", "limit": 6.5},
+}
+
+_WQ_PROCESS_UNITS = ["inlet", "biological", "secondary", "outlet"]
+_WQ_DEVICE_MAP = {
+    "COD": "COD分析仪",
+    "NH3N": "氨氮在线仪",
+    "TP": "总磷分析仪",
+    "SS": "SS在线仪",
+    "TN": "总氮分析仪",
+    "PH": "pH计",
+}
+
+_WATER_QUALITY_WARNINGS: List[dict] = []
+
+
+def _seed_water_quality_warnings():
+    """根据当前日期生成一批确定性的水质预警数据"""
+    global _WATER_QUALITY_WARNINGS
+    if _WATER_QUALITY_WARNINGS:
+        return
+
+    from datetime import timedelta
+    import random
+    rng = random.Random(20240115)
+    now = datetime.now()
+    levels = ["urgent", "warning", "normal"]
+    statuses = ["pending", "confirmed", "processing", "resolved"]
+    root_causes = ["inlet_surge", "process_abnormal", "equipment_fault",
+                   "dosage_insufficient", "sludge_issue", "other"]
+    persons = ["张工", "李工", "王工", "赵工"]
+
+    samples = []
+    indicators = list(_WQ_INDICATOR_META.keys())
+    for i in range(24):
+        ind = indicators[i % len(indicators)]
+        meta = _WQ_INDICATOR_META[ind]
+        unit_proc = _WQ_PROCESS_UNITS[i % len(_WQ_PROCESS_UNITS)]
+        limit = meta["limit"]
+        ratio = rng.uniform(1.02, 1.35)
+        measured = round(limit * ratio, 2)
+        deviation = round(measured - limit, 2)
+        deviation_percent = round(deviation / limit * 100, 1) if limit else 0
+        trigger_dt = now - timedelta(hours=i * 3, minutes=rng.randint(0, 59))
+        level = levels[0] if ratio > 1.2 else levels[1] if ratio > 1.08 else levels[2]
+        status = statuses[i % len(statuses)]
+        item = {
+            "id": str(i + 1),
+            "warning_no": f"WQW{trigger_dt.strftime('%Y%m%d')}{(i + 1):03d}",
+            "indicator_type": ind,
+            "process_unit": unit_proc,
+            "level": level,
+            "status": status,
+            "measured_value": measured,
+            "limit_value": limit,
+            "unit": meta["unit"],
+            "deviation": deviation,
+            "deviation_percent": deviation_percent,
+            "trigger_time": trigger_dt.strftime("%Y-%m-%d %H:%M:%S"),
+            "duration": f"{rng.randint(10, 120)}分钟",
+            "source": "在线监测",
+            "device_name": f"{unit_proc}-{_WQ_DEVICE_MAP[ind]}",
+            "snapshot_data": [
+                round(limit * 0.85, 2),
+                round(limit * 0.92, 2),
+                round(limit * 0.98, 2),
+                measured,
+                round(limit * 1.05, 2),
+                round(limit * 1.0, 2),
+                round(limit * 0.95, 2),
+            ],
+        }
+        if status in ("confirmed", "processing", "resolved"):
+            item["confirmer"] = rng.choice(persons)
+            item["confirm_time"] = (trigger_dt + timedelta(minutes=15)).strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
+            item["root_cause"] = rng.choice(root_causes)
+        if status in ("processing", "resolved"):
+            item["handler"] = rng.choice(persons)
+            item["handle_description"] = "已按工艺预案调整运行参数并加强巡检"
+        samples.append(item)
+
+    _WATER_QUALITY_WARNINGS = samples
+
+
+@router.get("/water-quality-warnings", response_model=WaterQualityWarningsResponse)
+def get_water_quality_warnings(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=100),
+    indicator_type: Optional[str] = None,
+    process_unit: Optional[str] = None,
+    status: Optional[str] = None,
+    level: Optional[str] = None,
+    start_time: Optional[str] = None,
+    end_time: Optional[str] = None,
+    current_user: User = Depends(get_current_active_user),
+):
+    _seed_water_quality_warnings()
+    data = list(_WATER_QUALITY_WARNINGS)
+
+    if indicator_type:
+        data = [d for d in data if d["indicator_type"] == indicator_type]
+    if process_unit:
+        data = [d for d in data if d["process_unit"] == process_unit]
+    if status:
+        data = [d for d in data if d["status"] == status]
+    if level:
+        data = [d for d in data if d["level"] == level]
+    if start_time and end_time:
+        data = [
+            d for d in data
+            if start_time <= d["trigger_time"] <= end_time
+        ]
+
+    total = len(data)
+    start_idx = (page - 1) * page_size
+    page_items = data[start_idx:start_idx + page_size]
+
+    stats = WaterQualityStats(
+        total=len(data),
+        pending=sum(1 for d in data if d["status"] == "pending"),
+        processing=sum(1 for d in data if d["status"] == "processing"),
+        resolved=sum(1 for d in data if d["status"] == "resolved"),
+    )
+
+    counter: dict = {}
+    for d in data:
+        counter[d["indicator_type"]] = counter.get(d["indicator_type"], 0) + 1
+    total_count = sum(counter.values()) or 1
+    distribution = [
+        IndicatorDistributionItem(
+            name=name,
+            label=_WQ_INDICATOR_META.get(name, {}).get("label", name),
+            count=cnt,
+            percent=round(cnt / total_count * 100),
+            color=_WQ_INDICATOR_META.get(name, {}).get("color", "#165DFF"),
+        )
+        for name, cnt in counter.items()
+    ]
+
+    return WaterQualityWarningsResponse(
+        items=[WaterQualityWarningItem(**d) for d in page_items],
+        total=total,
+        stats=stats,
+        indicator_distribution=distribution,
+    )
+
+
+class WQConfirmRequest(BaseModel):
+    confirm_result: str
+    root_cause: Optional[str] = None
+    remark: Optional[str] = None
+
+
+@router.put("/water-quality-warnings/{warning_id}/confirm", response_model=MessageResponse)
+def confirm_water_quality_warning(
+    warning_id: str,
+    payload: WQConfirmRequest,
+    current_user: User = Depends(get_current_active_user),
+):
+    _seed_water_quality_warnings()
+    for item in _WATER_QUALITY_WARNINGS:
+        if item["id"] == warning_id:
+            item["status"] = "confirmed"
+            item["confirmer"] = current_user.username
+            item["confirm_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            if payload.confirm_result == "true_alarm" and payload.root_cause:
+                item["root_cause"] = payload.root_cause
+            return MessageResponse(message="确认成功")
+    raise HTTPException(status_code=404, detail="预警记录不存在")
+
+
+class WQHandleRequest(BaseModel):
+    handle_status: str
+    handle_description: str
+    effect: Optional[str] = None
+
+
+@router.put("/water-quality-warnings/{warning_id}/handle", response_model=MessageResponse)
+def handle_water_quality_warning(
+    warning_id: str,
+    payload: WQHandleRequest,
+    current_user: User = Depends(get_current_active_user),
+):
+    _seed_water_quality_warnings()
+    for item in _WATER_QUALITY_WARNINGS:
+        if item["id"] == warning_id:
+            item["status"] = payload.handle_status
+            item["handler"] = current_user.username
+            item["handle_description"] = payload.handle_description
+            return MessageResponse(message="处置记录已保存")
+    raise HTTPException(status_code=404, detail="预警记录不存在")
+
+
+@router.get("/water-quality-warnings/{warning_id}/snapshot")
+def get_water_quality_warning_snapshot(
+    warning_id: str,
+    current_user: User = Depends(get_current_active_user),
+):
+    _seed_water_quality_warnings()
+    for item in _WATER_QUALITY_WARNINGS:
+        if item["id"] == warning_id:
+            return {"data": item.get("snapshot_data", [])}
+    raise HTTPException(status_code=404, detail="预警记录不存在")
+
+
+@router.get("/water-quality-trend")
+def get_water_quality_trend(
+    indicator_type: Optional[str] = None,
+    process_unit: Optional[str] = None,
+    range: str = "6h",
+    current_user: User = Depends(get_current_active_user),
+):
+    import math
+    meta = _WQ_INDICATOR_META.get(indicator_type or "COD", _WQ_INDICATOR_META["COD"])
+    limit = meta["limit"]
+    config = {"1h": 12, "6h": 24, "24h": 24, "7d": 14}
+    points = config.get(range, 24)
+    times: List[str] = []
+    values: List[float] = []
+    for i in range(points):
+        if range == "1h":
+            times.append(f"{i * 5}分")
+        elif range in ("6h", "24h"):
+            hour = int(i * (0.25 if range == "6h" else 1))
+            times.append(f"{hour:02d}:00")
+        else:
+            times.append(f"{i + 1}日")
+        base = limit * 0.85
+        variation = math.sin(i * 0.5) * limit * 0.15
+        values.append(round(base + variation, 2))
+    return {
+        "times": times,
+        "values": values,
+        "limit": limit,
+        "unit": meta["unit"],
+    }
+
+
+# =====================================================================
+# 污泥清运调度台
+# =====================================================================
+
+class SludgeOrderItem(BaseModel):
+    id: str
+    order_no: str
+    status: str
+    sludge_property: str
+    estimated_tonnage: float
+    moisture_content: float
+    vehicle_plate: Optional[str] = ""
+    driver_name: Optional[str] = ""
+    driver_phone: Optional[str] = ""
+    destination: str
+    planned_departure: Optional[str] = None
+    planned_arrival: Optional[str] = None
+    actual_departure: Optional[str] = ""
+    actual_arrival: Optional[str] = ""
+    created_at: Optional[str] = None
+    dispatched_at: Optional[str] = None
+    completed_at: Optional[str] = None
+    remark: Optional[str] = ""
+
+
+class PaginatedItems(BaseModel):
+    items: List[dict]
+    total: int
+
+
+_SLUDGE_VEHICLES = [
+    {"id": 1, "plate_number": "京A12345", "type": "自卸车", "load_capacity": 20},
+    {"id": 2, "plate_number": "京B67890", "type": "密闭罐车", "load_capacity": 15},
+    {"id": 3, "plate_number": "京C11111", "type": "自卸车", "load_capacity": 25},
+    {"id": 4, "plate_number": "京D22222", "type": "自卸车", "load_capacity": 18},
+    {"id": 5, "plate_number": "京E33333", "type": "密闭罐车", "load_capacity": 12},
+]
+
+_SLUDGE_DRIVERS = [
+    {"id": 1, "name": "张师傅", "phone": "13800138001"},
+    {"id": 2, "name": "李师傅", "phone": "13800138002"},
+    {"id": 3, "name": "王师傅", "phone": "13800138003"},
+    {"id": 4, "name": "赵师傅", "phone": "13800138004"},
+    {"id": 5, "name": "刘师傅", "phone": "13800138005"},
+]
+
+_SLUDGE_DESTINATIONS = [
+    {"id": 1, "name": "北京市污泥处置中心"},
+    {"id": 2, "name": "通州污泥焚烧厂"},
+    {"id": 3, "name": "大兴资源化利用基地"},
+    {"id": 4, "name": "顺义污泥堆肥场"},
+]
+
+# 按日期分桶存储工单
+_SLUDGE_ORDERS_BY_DATE: dict = {}
+_SLUDGE_ORDER_SEQ = {"value": 1000}
+
+
+def _build_seed_orders_for_date(date_str: str) -> List[dict]:
+    """为指定日期生成一组确定性的污泥清运工单"""
+    target = datetime.strptime(date_str, "%Y-%m-%d")
+    base_no = target.strftime("%Y%m%d")
+    properties = ["脱水污泥", "脱水污泥", "浓缩污泥", "脱水污泥", "消化污泥",
+                  "脱水污泥", "剩余污泥", "脱水污泥"]
+    statuses = ["pending", "dispatched", "transporting", "arrived",
+                "completed", "pending", "transporting", "pending"]
+    tonnages = [18.5, 22.0, 15.0, 20.0, 12.5, 25.0, 16.0, 18.0]
+    moistures = [78, 80, 85, 76, 75, 77, 82, 79]
+    destinations_pool = [d["name"] for d in _SLUDGE_DESTINATIONS]
+    plan_departures = [(8, 30), (9, 0), (9, 30), (10, 0), (7, 0),
+                       (13, 30), (11, 0), (15, 0)]
+    plan_arrivals = [(9, 30), (10, 15), (10, 50), (11, 0), (8, 20),
+                     (14, 45), (12, 20), (16, 0)]
+    drivers_pool = [(v, d) for v, d in zip(_SLUDGE_VEHICLES, _SLUDGE_DRIVERS)]
+
+    orders: List[dict] = []
+    for idx in range(8):
+        st = statuses[idx]
+        veh, drv = drivers_pool[idx % len(drivers_pool)]
+        pd = target.replace(hour=plan_departures[idx][0], minute=plan_departures[idx][1], second=0, microsecond=0)
+        pa = target.replace(hour=plan_arrivals[idx][0], minute=plan_arrivals[idx][1], second=0, microsecond=0)
+        order = {
+            "id": f"{base_no}-{idx + 1}",
+            "order_no": f"WN{base_no}{(idx + 1):03d}",
+            "status": st,
+            "sludge_property": properties[idx],
+            "estimated_tonnage": tonnages[idx],
+            "moisture_content": moistures[idx],
+            "vehicle_plate": "" if st == "pending" else veh["plate_number"],
+            "driver_name": "" if st == "pending" else drv["name"],
+            "driver_phone": "" if st == "pending" else drv["phone"],
+            "destination": destinations_pool[idx % len(destinations_pool)],
+            "planned_departure": pd.strftime("%Y-%m-%d %H:%M:%S"),
+            "planned_arrival": pa.strftime("%Y-%m-%d %H:%M:%S"),
+            "actual_departure": "",
+            "actual_arrival": "",
+            "created_at": target.replace(hour=7, minute=0, second=0).strftime("%Y-%m-%d %H:%M:%S"),
+            "dispatched_at": None,
+            "completed_at": None,
+            "remark": "",
+        }
+        if st in ("dispatched", "transporting", "arrived", "completed"):
+            order["dispatched_at"] = (pd.replace(hour=max(pd.hour - 1, 0))
+                                      .strftime("%Y-%m-%d %H:%M:%S"))
+        if st in ("transporting", "arrived", "completed"):
+            order["actual_departure"] = pd.strftime("%Y-%m-%d %H:%M:%S")
+        if st in ("arrived", "completed"):
+            order["actual_arrival"] = pa.strftime("%Y-%m-%d %H:%M:%S")
+        if st == "completed":
+            order["completed_at"] = (pa.replace(hour=min(pa.hour + 1, 23))
+                                     .strftime("%Y-%m-%d %H:%M:%S"))
+        orders.append(order)
+    return orders
+
+
+def _get_orders_for_date(date_str: str) -> List[dict]:
+    if date_str not in _SLUDGE_ORDERS_BY_DATE:
+        _SLUDGE_ORDERS_BY_DATE[date_str] = _build_seed_orders_for_date(date_str)
+    return _SLUDGE_ORDERS_BY_DATE[date_str]
+
+
+def _find_order(order_id: str) -> Optional[dict]:
+    for orders in _SLUDGE_ORDERS_BY_DATE.values():
+        for o in orders:
+            if str(o["id"]) == str(order_id):
+                return o
+    return None
+
+
+@router.get("/sludge-transport/orders")
+def get_sludge_transport_orders(
+    date: Optional[str] = None,
+    current_user: User = Depends(get_current_active_user),
+):
+    date_str = date or datetime.now().strftime("%Y-%m-%d")
+    orders = _get_orders_for_date(date_str)
+    return {"items": orders, "total": len(orders)}
+
+
+@router.get("/sludge-transport/stats")
+def get_sludge_transport_stats(
+    current_user: User = Depends(get_current_active_user),
+):
+    date_str = datetime.now().strftime("%Y-%m-%d")
+    orders = _get_orders_for_date(date_str)
+    total = len(orders)
+    return {
+        "total": total,
+        "pending": sum(1 for o in orders if o["status"] == "pending"),
+        "dispatched": sum(1 for o in orders if o["status"] == "dispatched"),
+        "transporting": sum(1 for o in orders if o["status"] == "transporting"),
+        "arrived": sum(1 for o in orders if o["status"] == "arrived"),
+        "completed": sum(1 for o in orders if o["status"] == "completed"),
+        "totalTonnage": round(sum(o["estimated_tonnage"] for o in orders), 1),
+    }
+
+
+@router.get("/sludge-transport/vehicles")
+def get_sludge_vehicles(
+    current_user: User = Depends(get_current_active_user),
+):
+    return {"items": _SLUDGE_VEHICLES, "total": len(_SLUDGE_VEHICLES)}
+
+
+@router.get("/sludge-transport/drivers")
+def get_sludge_drivers(
+    current_user: User = Depends(get_current_active_user),
+):
+    return {"items": _SLUDGE_DRIVERS, "total": len(_SLUDGE_DRIVERS)}
+
+
+@router.get("/sludge-transport/destinations")
+def get_sludge_destinations(
+    current_user: User = Depends(get_current_active_user),
+):
+    return {"items": _SLUDGE_DESTINATIONS, "total": len(_SLUDGE_DESTINATIONS)}
+
+
+class SludgeOrderCreate(BaseModel):
+    sludge_property: str
+    estimated_tonnage: float
+    moisture_content: float
+    destination: str
+    planned_departure: Optional[str] = None
+    planned_arrival: Optional[str] = None
+    remark: Optional[str] = ""
+
+
+@router.post("/sludge-transport/orders")
+def create_sludge_transport_order(
+    payload: SludgeOrderCreate,
+    current_user: User = Depends(get_current_active_user),
+):
+    now = datetime.now()
+    date_str = now.strftime("%Y-%m-%d")
+    orders = _get_orders_for_date(date_str)
+    _SLUDGE_ORDER_SEQ["value"] += 1
+    seq = _SLUDGE_ORDER_SEQ["value"]
+    order = {
+        "id": f"{now.strftime('%Y%m%d')}-{seq}",
+        "order_no": f"WN{now.strftime('%Y%m%d')}{seq:03d}",
+        "status": "pending",
+        "sludge_property": payload.sludge_property,
+        "estimated_tonnage": payload.estimated_tonnage,
+        "moisture_content": payload.moisture_content,
+        "vehicle_plate": "",
+        "driver_name": "",
+        "driver_phone": "",
+        "destination": payload.destination,
+        "planned_departure": payload.planned_departure,
+        "planned_arrival": payload.planned_arrival,
+        "actual_departure": "",
+        "actual_arrival": "",
+        "created_at": now.strftime("%Y-%m-%d %H:%M:%S"),
+        "dispatched_at": None,
+        "completed_at": None,
+        "remark": payload.remark or "",
+    }
+    orders.append(order)
+    return order
+
+
+@router.put("/sludge-transport/orders/{order_id}")
+def update_sludge_transport_order(
+    order_id: str,
+    payload: SludgeOrderCreate,
+    current_user: User = Depends(get_current_active_user),
+):
+    order = _find_order(order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="工单不存在")
+    order.update({
+        "sludge_property": payload.sludge_property,
+        "estimated_tonnage": payload.estimated_tonnage,
+        "moisture_content": payload.moisture_content,
+        "destination": payload.destination,
+        "planned_departure": payload.planned_departure,
+        "planned_arrival": payload.planned_arrival,
+        "remark": payload.remark or "",
+    })
+    return order
+
+
+class SludgeDispatchRequest(BaseModel):
+    vehicle_id: int
+    driver_id: int
+    remark: Optional[str] = ""
+
+
+@router.post("/sludge-transport/orders/{order_id}/dispatch")
+def dispatch_sludge_transport_order(
+    order_id: str,
+    payload: SludgeDispatchRequest,
+    current_user: User = Depends(get_current_active_user),
+):
+    order = _find_order(order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="工单不存在")
+    veh = next((v for v in _SLUDGE_VEHICLES if v["id"] == payload.vehicle_id), None)
+    drv = next((d for d in _SLUDGE_DRIVERS if d["id"] == payload.driver_id), None)
+    if not veh or not drv:
+        raise HTTPException(status_code=400, detail="车辆或司机不存在")
+    order["status"] = "dispatched"
+    order["vehicle_plate"] = veh["plate_number"]
+    order["driver_name"] = drv["name"]
+    order["driver_phone"] = drv["phone"]
+    order["dispatched_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    return order
+
+
+class SludgeStatusUpdate(BaseModel):
+    status: str
+
+
+@router.put("/sludge-transport/orders/{order_id}/status")
+def update_sludge_transport_status(
+    order_id: str,
+    payload: SludgeStatusUpdate,
+    current_user: User = Depends(get_current_active_user),
+):
+    order = _find_order(order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="工单不存在")
+    if payload.status not in ("pending", "dispatched", "transporting", "arrived", "completed"):
+        raise HTTPException(status_code=400, detail="无效的状态值")
+    order["status"] = payload.status
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    if payload.status == "transporting":
+        order["actual_departure"] = now_str
+    elif payload.status == "arrived":
+        order["actual_arrival"] = now_str
+    elif payload.status == "completed":
+        order["completed_at"] = now_str
+    return order

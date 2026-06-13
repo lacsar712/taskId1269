@@ -92,6 +92,10 @@
               <template #icon><icon-display /></template>
               出水水质公示牌
             </a-menu-item>
+            <a-menu-item key="production/noise-odor-monitor">
+              <template #icon><icon-sound /></template>
+              噪声与臭气监测
+            </a-menu-item>
           </a-sub-menu>
           
           <a-sub-menu key="safety">

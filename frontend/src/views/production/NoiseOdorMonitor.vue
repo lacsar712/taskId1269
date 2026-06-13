@@ -317,7 +317,9 @@
               <a-table-column title="适用点位" data-index="point_names" width="200" />
               <a-table-column title="限值类型" data-index="limit_type" width="100">
                 <template #cell="{ record }">
-                  {{ record.limit_type === 'day' ? '昼间限值' : '夜间限值' }}
+                  <span v-if="record.limit_type === 'day'">昼间限值</span>
+                  <span v-else-if="record.limit_type === 'night'">夜间限值</span>
+                  <span v-else>全天限值</span>
                 </template>
               </a-table-column>
               <a-table-column title="限值" width="120">
@@ -488,6 +490,7 @@ const stats = reactive({
 
 const monitorPoints = ref<any[]>([])
 const overRecords = ref<any[]>([])
+const allOverRecords = ref<any[]>([])
 const limitConfigs = ref<any[]>([])
 
 const chartStats = reactive({
@@ -969,7 +972,7 @@ const generateMockData = () => {
     })
   }
 
-  overRecords.value = [
+  allOverRecords.value = [
     {
       id: 1,
       record_no: 'NO20240115001',
@@ -1125,7 +1128,7 @@ const generateMockData = () => {
       remark: '厌氧罐排气阀故障，已紧急处置'
     }
   ]
-  overPagination.total = overRecords.value.length
+  applyOverFilter()
 
   limitConfigs.value = [
     {
@@ -1265,10 +1268,37 @@ const fetchOverRecords = async () => {
     overRecords.value = res.items || []
     overPagination.total = res.total || 0
   } catch (e) {
-    // Mock data already generated
+    applyOverFilter()
   } finally {
     overLoading.value = false
   }
+}
+
+const applyOverFilter = () => {
+  let list = [...allOverRecords.value]
+
+  if (overFilters.indicator) {
+    list = list.filter(r => r.indicator === overFilters.indicator)
+  }
+  if (overFilters.point_id) {
+    const pointId = typeof overFilters.point_id === 'string' ? Number(overFilters.point_id) : overFilters.point_id
+    list = list.filter(r => r.point_id === pointId)
+  }
+  if (overFilters.level) {
+    list = list.filter(r => r.level === overFilters.level)
+  }
+  if (overFilters.time_range && overFilters.time_range.length === 2) {
+    const start = new Date(overFilters.time_range[0]).getTime()
+    const end = new Date(overFilters.time_range[1]).getTime()
+    list = list.filter(r => {
+      const t = new Date(r.start_time.replace(/-/g, '/')).getTime()
+      return t >= start && t <= end
+    })
+  }
+
+  overPagination.total = list.length
+  const startIdx = (overPagination.current - 1) * overPagination.pageSize
+  overRecords.value = list.slice(startIdx, startIdx + overPagination.pageSize)
 }
 
 const viewOverDetail = (record: any) => {

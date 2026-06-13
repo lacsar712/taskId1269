@@ -108,6 +108,7 @@
             <a-menu-item key="equipment/monitor">运行监控</a-menu-item>
             <a-menu-item key="equipment/maintenance">维护保养</a-menu-item>
             <a-menu-item key="equipment/fault">故障管理</a-menu-item>
+            <a-menu-item key="equipment/contract">维保合同管理</a-menu-item>
             <a-menu-item key="equipment/spare">备件管理</a-menu-item>
             <a-menu-item key="equipment/fault-alarm">故障告警</a-menu-item>
             <a-menu-item key="equipment/analysis">设备分析</a-menu-item>

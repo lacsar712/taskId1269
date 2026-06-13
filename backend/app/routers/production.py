@@ -1474,3 +1474,201 @@ def update_sludge_transport_status(
     elif payload.status == "completed":
         order["completed_at"] = now_str
     return order
+
+
+# =====================================================================
+# 药剂投加记录
+# =====================================================================
+
+class DosingRecordItem(BaseModel):
+    id: int
+    dosing_time: str
+    medicine_name: str
+    specification: Optional[str] = ""
+    dosing_point: str
+    dosage: float
+    dosing_method: Optional[str] = ""
+    operator: Optional[str] = ""
+    shift: Optional[str] = ""
+    remark: Optional[str] = ""
+
+
+class DosingRecordCreate(BaseModel):
+    dosing_time: str
+    medicine_name: str
+    specification: Optional[str] = ""
+    dosing_point: str
+    dosage: float
+    dosing_method: Optional[str] = ""
+    operator: Optional[str] = ""
+    shift: Optional[str] = ""
+    remark: Optional[str] = ""
+
+
+class DosingRecordUpdate(BaseModel):
+    dosing_time: Optional[str] = None
+    medicine_name: Optional[str] = None
+    specification: Optional[str] = None
+    dosing_point: Optional[str] = None
+    dosage: Optional[float] = None
+    dosing_method: Optional[str] = None
+    operator: Optional[str] = None
+    shift: Optional[str] = None
+    remark: Optional[str] = None
+
+
+_DOSING_RECORDS: List[dict] = []
+_DOSING_SEQ = {"value": 0}
+_DOSING_SEEDED = False
+
+
+def _seed_dosing_records():
+    global _DOSING_SEEDED
+    if _DOSING_SEEDED:
+        return
+    _DOSING_SEEDED = True
+    import random
+    rng = random.Random(20250613)
+    now = datetime.now()
+    medicines = ["PAC", "PAM", "Carbon"]
+    points = ["inlet", "biological", "advanced", "disinfection", "sludge"]
+    methods = ["自动", "手动", "连续", "间歇"]
+    shifts = ["早班", "中班", "晚班"]
+    operators = ["张工", "李工", "王工", "赵工", "钱工"]
+    specs = {
+        "PAC": ["工业级 袋装", "液体 10%", "固体 28%"],
+        "PAM": ["阴离子 粉状", "阳离子 乳液", "非离子"],
+        "Carbon": ["乙酸钠 液体", "葡萄糖 袋装", "甲醇 桶装"],
+    }
+    for i in range(50):
+        med = medicines[i % 3]
+        dt = now - __import__("datetime").timedelta(
+            days=rng.randint(0, 6),
+            hours=rng.randint(6, 21),
+            minutes=rng.randint(0, 59),
+            seconds=rng.randint(0, 59),
+        )
+        _DOSING_SEQ["value"] += 1
+        _DOSING_RECORDS.append({
+            "id": _DOSING_SEQ["value"],
+            "dosing_time": dt.strftime("%Y-%m-%d %H:%M:%S"),
+            "medicine_name": med,
+            "specification": specs[med][rng.randint(0, 2)],
+            "dosing_point": points[rng.randint(0, len(points) - 1)],
+            "dosage": round(rng.uniform(10, 110), 2),
+            "dosing_method": methods[rng.randint(0, 3)],
+            "operator": operators[rng.randint(0, 4)],
+            "shift": shifts[rng.randint(0, 2)],
+            "remark": "正常投加" if rng.random() > 0.7 else "",
+        })
+    _DOSING_RECORDS.sort(key=lambda r: r["dosing_time"], reverse=True)
+
+
+@router.get("/dosing-records")
+def get_dosing_records(
+    medicine_name: Optional[str] = None,
+    dosing_point: Optional[str] = None,
+    operator: Optional[str] = None,
+    current_user: User = Depends(get_current_active_user),
+):
+    _seed_dosing_records()
+    data = list(_DOSING_RECORDS)
+    if medicine_name:
+        data = [r for r in data if r["medicine_name"] == medicine_name]
+    if dosing_point:
+        data = [r for r in data if r["dosing_point"] == dosing_point]
+    if operator:
+        data = [r for r in data if operator in (r.get("operator") or "")]
+    return {"items": data, "total": len(data)}
+
+
+@router.post("/dosing-records")
+def create_dosing_record(
+    payload: DosingRecordCreate,
+    current_user: User = Depends(get_current_active_user),
+):
+    _seed_dosing_records()
+    _DOSING_SEQ["value"] += 1
+    record = {
+        "id": _DOSING_SEQ["value"],
+        "dosing_time": payload.dosing_time,
+        "medicine_name": payload.medicine_name,
+        "specification": payload.specification or "",
+        "dosing_point": payload.dosing_point,
+        "dosage": payload.dosage,
+        "dosing_method": payload.dosing_method or "",
+        "operator": payload.operator or "",
+        "shift": payload.shift or "",
+        "remark": payload.remark or "",
+    }
+    _DOSING_RECORDS.insert(0, record)
+    return record
+
+
+@router.put("/dosing-records/{record_id}")
+def update_dosing_record(
+    record_id: int,
+    payload: DosingRecordUpdate,
+    current_user: User = Depends(get_current_active_user),
+):
+    _seed_dosing_records()
+    record = next((r for r in _DOSING_RECORDS if r["id"] == record_id), None)
+    if not record:
+        raise HTTPException(status_code=404, detail="投加记录不存在")
+    update_data = payload.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        record[key] = value
+    return record
+
+
+@router.delete("/dosing-records/{record_id}")
+def delete_dosing_record(
+    record_id: int,
+    current_user: User = Depends(get_current_active_user),
+):
+    _seed_dosing_records()
+    record = next((r for r in _DOSING_RECORDS if r["id"] == record_id), None)
+    if not record:
+        raise HTTPException(status_code=404, detail="投加记录不存在")
+    _DOSING_RECORDS.remove(record)
+    return MessageResponse(message="删除成功")
+
+
+@router.get("/dosing-stats")
+def get_dosing_stats(
+    current_user: User = Depends(get_current_active_user),
+):
+    _seed_dosing_records()
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    today_records = [r for r in _DOSING_RECORDS if r["dosing_time"].startswith(today_str)]
+    pac_today = sum(r["dosage"] for r in today_records if r["medicine_name"] == "PAC")
+    pam_today = sum(r["dosage"] for r in today_records if r["medicine_name"] == "PAM")
+    carbon_today = sum(r["dosage"] for r in today_records if r["medicine_name"] == "Carbon")
+
+    date_keys = []
+    for i in range(6, -1, -1):
+        d = datetime.now() - __import__("datetime").timedelta(days=i)
+        date_keys.append(d.strftime("%Y-%m-%d"))
+
+    trend = {}
+    for med in ["PAC", "PAM", "Carbon"]:
+        trend[med] = []
+        for dk in date_keys:
+            total = round(sum(r["dosage"] for r in _DOSING_RECORDS if r["medicine_name"] == med and r["dosing_time"].startswith(dk)))
+            trend[med].append(total)
+
+    point_map = {}
+    point_labels = {"inlet": "进水", "biological": "生化池", "advanced": "深度处理", "disinfection": "消毒池", "sludge": "污泥处理"}
+    for r in today_records:
+        label = point_labels.get(r["dosing_point"], r["dosing_point"])
+        point_map[label] = point_map.get(label, 0) + r["dosage"]
+
+    return {
+        "pac_today": round(pac_today),
+        "pam_today": round(pam_today),
+        "carbon_today": round(carbon_today),
+        "total_today": round(pac_today + pam_today + carbon_today),
+        "trend_dates": date_keys,
+        "trend": trend,
+        "point_distribution": {k: round(v) for k, v in point_map.items()},
+    }

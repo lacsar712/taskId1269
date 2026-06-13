@@ -453,6 +453,20 @@ const formatDateShort = (d: Date) => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
+const getDateKey = (timeStr: string) => {
+  return timeStr.substring(0, 10)
+}
+
+const refreshDashboard = () => {
+  const todayStr = formatDateShort(new Date())
+  const todayRecords = recordList.value.filter(r => getDateKey(r.dosing_time) === todayStr)
+  stats.pac_today = Math.round(todayRecords.filter(r => r.medicine_name === 'PAC').reduce((s, r) => s + r.dosage, 0))
+  stats.pam_today = Math.round(todayRecords.filter(r => r.medicine_name === 'PAM').reduce((s, r) => s + r.dosage, 0))
+  stats.carbon_today = Math.round(todayRecords.filter(r => r.medicine_name === 'Carbon').reduce((s, r) => s + r.dosage, 0))
+  stats.total_today = stats.pac_today + stats.pam_today + stats.carbon_today
+  updateCharts()
+}
+
 const generateMockData = () => {
   const medicines = ['PAC', 'PAM', 'Carbon']
   const points = ['inlet', 'biological', 'advanced', 'disinfection', 'sludge']
@@ -489,16 +503,7 @@ const generateMockData = () => {
   mockData.sort((a, b) => new Date(b.dosing_time).getTime() - new Date(a.dosing_time).getTime())
   recordList.value = mockData
   pagination.total = mockData.length
-
-  const todayStr = formatDateShort(new Date())
-  const pacToday = mockData.filter(r => r.medicine_name === 'PAC' && r.dosing_time.startsWith(todayStr)).reduce((s, r) => s + r.dosage, 0)
-  const pamToday = mockData.filter(r => r.medicine_name === 'PAM' && r.dosing_time.startsWith(todayStr)).reduce((s, r) => s + r.dosage, 0)
-  const carbonToday = mockData.filter(r => r.medicine_name === 'Carbon' && r.dosing_time.startsWith(todayStr)).reduce((s, r) => s + r.dosage, 0)
-
-  stats.pac_today = Math.round(pacToday)
-  stats.pam_today = Math.round(pamToday)
-  stats.carbon_today = Math.round(carbonToday)
-  stats.total_today = stats.pac_today + stats.pam_today + stats.carbon_today
+  refreshDashboard()
 }
 
 const initTrendChart = () => {
@@ -513,24 +518,48 @@ const initTrendChart = () => {
 const updateTrendChart = () => {
   if (!trendChartInstance) return
 
-  const dates: string[] = []
+  const dateKeys: string[] = []
+  const dateLabels: string[] = []
   const now = new Date()
   for (let i = 6; i >= 0; i--) {
     const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000)
-    dates.push(`${d.getMonth() + 1}/${d.getDate()}`)
+    dateKeys.push(formatDateShort(d))
+    dateLabels.push(`${d.getMonth() + 1}/${d.getDate()}`)
   }
 
-  const baseData = {
-    PAC: [120, 135, 128, 142, 138, 150, 145],
-    PAM: [25, 28, 26, 30, 29, 32, 31],
-    Carbon: [80, 85, 90, 88, 92, 95, 89]
+  const medicines = ['PAC', 'PAM', 'Carbon']
+  const seriesData: Record<string, number[]> = {}
+  for (const med of medicines) {
+    seriesData[med] = dateKeys.map(dk => {
+      return Math.round(recordList.value.filter(r => r.medicine_name === med && getDateKey(r.dosing_time) === dk).reduce((s, r) => s + r.dosage, 0))
+    })
   }
-
-  const pacData = baseData.PAC.map(v => v + Math.round((Math.random() - 0.5) * 10))
-  const pamData = baseData.PAM.map(v => v + Math.round((Math.random() - 0.5) * 3))
-  const carbonData = baseData.Carbon.map(v => v + Math.round((Math.random() - 0.5) * 8))
 
   const isHighlight = highlightMedicine.value !== ''
+
+  const colorGradients: Record<string, [string, string]> = {
+    PAC: ['rgba(22, 93, 255, 0.25)', 'rgba(22, 93, 255, 0.02)'],
+    PAM: ['rgba(0, 180, 42, 0.25)', 'rgba(0, 180, 42, 0.02)'],
+    Carbon: ['rgba(255, 125, 0, 0.25)', 'rgba(255, 125, 0, 0.02)']
+  }
+
+  const buildSeries = (medKey: string, name: string, color: string) => ({
+    name,
+    type: 'line' as const,
+    smooth: true,
+    symbol: 'circle',
+    symbolSize: 6,
+    lineStyle: { color, width: isHighlight && highlightMedicine.value === medKey ? 3 : 2, opacity: isHighlight && highlightMedicine.value !== medKey ? 0.3 : 1 },
+    itemStyle: { color, opacity: isHighlight && highlightMedicine.value !== medKey ? 0.3 : 1 },
+    areaStyle: {
+      color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+        { offset: 0, color: colorGradients[medKey][0] },
+        { offset: 1, color: colorGradients[medKey][1] }
+      ]),
+      opacity: isHighlight && highlightMedicine.value !== medKey ? 0.1 : 1
+    },
+    data: seriesData[medKey]
+  })
 
   const option = {
     grid: {
@@ -546,7 +575,7 @@ const updateTrendChart = () => {
     },
     xAxis: {
       type: 'category',
-      data: dates,
+      data: dateLabels,
       boundaryGap: false,
       axisLabel: { fontSize: 11 }
     },
@@ -557,61 +586,13 @@ const updateTrendChart = () => {
       axisLabel: { fontSize: 11 }
     },
     series: [
-      {
-        name: '聚合氯化铝',
-        type: 'line',
-        smooth: true,
-        symbol: 'circle',
-        symbolSize: 6,
-        lineStyle: { color: '#165DFF', width: isHighlight && highlightMedicine.value === 'PAC' ? 3 : 2, opacity: isHighlight && highlightMedicine.value !== 'PAC' ? 0.3 : 1 },
-        itemStyle: { color: '#165DFF', opacity: isHighlight && highlightMedicine.value !== 'PAC' ? 0.3 : 1 },
-        areaStyle: {
-          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: 'rgba(22, 93, 255, 0.25)' },
-            { offset: 1, color: 'rgba(22, 93, 255, 0.02)' }
-          ]),
-          opacity: isHighlight && highlightMedicine.value !== 'PAC' ? 0.1 : 1
-        },
-        data: pacData
-      },
-      {
-        name: 'PAM',
-        type: 'line',
-        smooth: true,
-        symbol: 'circle',
-        symbolSize: 6,
-        lineStyle: { color: '#00b42a', width: isHighlight && highlightMedicine.value === 'PAM' ? 3 : 2, opacity: isHighlight && highlightMedicine.value !== 'PAM' ? 0.3 : 1 },
-        itemStyle: { color: '#00b42a', opacity: isHighlight && highlightMedicine.value !== 'PAM' ? 0.3 : 1 },
-        areaStyle: {
-          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: 'rgba(0, 180, 42, 0.25)' },
-            { offset: 1, color: 'rgba(0, 180, 42, 0.02)' }
-          ]),
-          opacity: isHighlight && highlightMedicine.value !== 'PAM' ? 0.1 : 1
-        },
-        data: pamData
-      },
-      {
-        name: '碳源',
-        type: 'line',
-        smooth: true,
-        symbol: 'circle',
-        symbolSize: 6,
-        lineStyle: { color: '#ff7d00', width: isHighlight && highlightMedicine.value === 'Carbon' ? 3 : 2, opacity: isHighlight && highlightMedicine.value !== 'Carbon' ? 0.3 : 1 },
-        itemStyle: { color: '#ff7d00', opacity: isHighlight && highlightMedicine.value !== 'Carbon' ? 0.3 : 1 },
-        areaStyle: {
-          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: 'rgba(255, 125, 0, 0.25)' },
-            { offset: 1, color: 'rgba(255, 125, 0, 0.02)' }
-          ]),
-          opacity: isHighlight && highlightMedicine.value !== 'Carbon' ? 0.1 : 1
-        },
-        data: carbonData
-      }
+      buildSeries('PAC', '聚合氯化铝', '#165DFF'),
+      buildSeries('PAM', 'PAM', '#00b42a'),
+      buildSeries('Carbon', '碳源', '#ff7d00')
     ]
   }
 
-  trendChartInstance.setOption(option)
+  trendChartInstance.setOption(option, true)
 }
 
 const initPointChart = () => {
@@ -626,13 +607,19 @@ const initPointChart = () => {
 const updatePointChart = () => {
   if (!pointChartInstance) return
 
-  const pointData = [
-    { value: 158, name: '进水' },
-    { value: 96, name: '生化池' },
-    { value: 72, name: '深度处理' },
-    { value: 28, name: '消毒池' },
-    { value: 18, name: '污泥处理' }
-  ]
+  const todayStr = formatDateShort(new Date())
+  const todayRecords = recordList.value.filter(r => getDateKey(r.dosing_time) === todayStr)
+
+  const pointMap: Record<string, number> = {}
+  for (const r of todayRecords) {
+    const label = getDosingPointLabel(r.dosing_point)
+    pointMap[label] = (pointMap[label] || 0) + r.dosage
+  }
+
+  const pointOrder = ['进水', '生化池', '深度处理', '消毒池', '污泥处理']
+  const pointData = pointOrder
+    .filter(name => pointMap[name] > 0)
+    .map(name => ({ value: Math.round(pointMap[name]), name }))
 
   const option = {
     tooltip: {
@@ -682,12 +669,12 @@ const updatePointChart = () => {
             shadowColor: 'rgba(0, 0, 0, 0.2)'
           }
         },
-        data: pointData
+        data: pointData.length > 0 ? pointData : [{ value: 0, name: '暂无数据' }]
       }
     ]
   }
 
-  pointChartInstance.setOption(option)
+  pointChartInstance.setOption(option, true)
 }
 
 const updateCharts = () => {
@@ -699,21 +686,17 @@ const fetchData = async () => {
   loading.value = true
   try {
     const res: any = await productionApi.getDosingRecords({
-      page: pagination.current,
-      page_size: pagination.pageSize,
       medicine_name: filters.medicine_name || undefined,
       dosing_point: filters.dosing_point || undefined,
       operator: filters.operator || undefined
     })
     recordList.value = res.items || []
-    pagination.total = res.total || 0
-    if (res.stats) {
-      Object.assign(stats, res.stats)
-    }
+    pagination.total = res.total || recordList.value.length
   } catch (e) {
     generateMockData()
   } finally {
     loading.value = false
+    refreshDashboard()
   }
 }
 
@@ -792,7 +775,6 @@ const submitForm = async () => {
     }
     showFormModal.value = false
     fetchData()
-    updateCharts()
   } catch (e) {
     Message.success(isEdit.value ? '编辑成功' : '新增成功')
     showFormModal.value = false
@@ -809,7 +791,7 @@ const submitForm = async () => {
       }
     }
     pagination.total = recordList.value.length
-    updateCharts()
+    refreshDashboard()
   } finally {
     submitLoading.value = false
   }
@@ -830,7 +812,7 @@ const handleDelete = (record: any) => {
       }
       recordList.value = recordList.value.filter(r => r.id !== record.id)
       pagination.total = recordList.value.length
-      updateCharts()
+      refreshDashboard()
     }
   })
 }

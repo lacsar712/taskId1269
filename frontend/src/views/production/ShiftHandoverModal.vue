@@ -26,18 +26,27 @@
                 <a-date-picker
                   v-model="formData.shift_date"
                   style="width: 100%;"
-                  value-format="YYYY-MM-DD HH:mm:ss"
+                  value-format="YYYY-MM-DD"
                   placeholder="请选择交接日期"
                 />
               </a-form-item>
             </a-col>
             <a-col :span="12">
+              <a-form-item label="班次类型时间">
+                <div class="time-suggest">
+                  <a-tag v-if="formData.shift_type === 'morning'">08:00 - 16:00</a-tag>
+                  <a-tag v-else-if="formData.shift_type === 'middle'">16:00 - 00:00</a-tag>
+                  <a-tag v-else-if="formData.shift_type === 'night'">00:00 - 08:00</a-tag>
+                </div>
+              </a-form-item>
+            </a-col>
+            <a-col :span="12">
               <a-form-item label="当班开始时间" required>
                 <a-time-picker
-                  v-model="formData.start_time"
+                  v-model="formData.start_time_str"
                   style="width: 100%;"
                   format="HH:mm"
-                  value-format="YYYY-MM-DD HH:mm:ss"
+                  value-format="HH:mm"
                   placeholder="请选择开始时间"
                 />
               </a-form-item>
@@ -45,10 +54,10 @@
             <a-col :span="12">
               <a-form-item label="当班结束时间" required>
                 <a-time-picker
-                  v-model="formData.end_time"
+                  v-model="formData.end_time_str"
                   style="width: 100%;"
                   format="HH:mm"
-                  value-format="YYYY-MM-DD HH:mm:ss"
+                  value-format="HH:mm"
                   placeholder="请选择结束时间"
                 />
               </a-form-item>
@@ -212,8 +221,8 @@ const formRef = ref()
 const defaultFormData = () => ({
   shift_type: '',
   shift_date: '',
-  start_time: '',
-  end_time: '',
+  start_time_str: '',
+  end_time_str: '',
   handover_person_name: '',
   takeover_person_name: '',
   water_volume_summary: '',
@@ -226,14 +235,54 @@ const defaultFormData = () => ({
 
 const formData = reactive(defaultFormData())
 
+const parseDateTime = (datetimeStr: string) => {
+  if (!datetimeStr) return { date: '', time: '' }
+  const d = new Date(datetimeStr)
+  if (isNaN(d.getTime())) return { date: '', time: '' }
+  const date = d.toISOString().slice(0, 10)
+  const time = `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
+  return { date, time }
+}
+
+const combineDateTime = (dateStr: string, timeStr: string, nextDay = false) => {
+  if (!dateStr || !timeStr) return ''
+  let d = new Date(dateStr + 'T' + timeStr + ':00')
+  if (nextDay) {
+    d.setDate(d.getDate() + 1)
+  }
+  return d.toISOString().replace('T', ' ').slice(0, 19)
+}
+
+const shiftTimeMap: Record<string, { start: string; end: string }> = {
+  morning: { start: '08:00', end: '16:00' },
+  middle: { start: '16:00', end: '00:00' },
+  night: { start: '00:00', end: '08:00' }
+}
+
+watch(
+  () => formData.shift_type,
+  (newType) => {
+    if (newType && shiftTimeMap[newType] && !props.editData) {
+      formData.start_time_str = shiftTimeMap[newType].start
+      formData.end_time_str = shiftTimeMap[newType].end
+    }
+  }
+)
+
 watch(() => props.visible, (val) => {
   if (val) {
     if (props.editData) {
+      const startDT = parseDateTime(props.editData.start_time)
+      const endDT = parseDateTime(props.editData.end_time)
+      const shiftDate = props.editData.shift_date
+        ? new Date(props.editData.shift_date).toISOString().slice(0, 10)
+        : startDT.date
+
       Object.assign(formData, {
         shift_type: props.editData.shift_type || '',
-        shift_date: props.editData.shift_date || '',
-        start_time: props.editData.start_time || '',
-        end_time: props.editData.end_time || '',
+        shift_date: shiftDate,
+        start_time_str: startDT.time,
+        end_time_str: endDT.time,
         handover_person_name: props.editData.handover_person_name || '',
         takeover_person_name: props.editData.takeover_person_name || '',
         water_volume_summary: props.editData.water_volume_summary || '',
@@ -281,11 +330,11 @@ const validateForm = () => {
     Message.warning('请选择交接日期')
     return false
   }
-  if (!formData.start_time) {
+  if (!formData.start_time_str) {
     Message.warning('请选择当班开始时间')
     return false
   }
-  if (!formData.end_time) {
+  if (!formData.end_time_str) {
     Message.warning('请选择当班结束时间')
     return false
   }
@@ -303,18 +352,43 @@ const handleSubmit = async () => {
 
   submitLoading.value = true
   try {
-    const submitData = {
-      ...formData,
-      follow_up_items: formData.follow_up_items.map(item => ({
-        id: item.id,
+    const startHour = parseInt(formData.start_time_str.split(':')[0], 10)
+    const endHour = parseInt(formData.end_time_str.split(':')[0], 10)
+    const isEndNextDay = endHour < startHour && endHour === 0
+      ? true
+      : endHour < startHour
+
+    const shift_date = combineDateTime(formData.shift_date, '00:00')
+    const start_time = combineDateTime(formData.shift_date, formData.start_time_str)
+    const end_time = combineDateTime(formData.shift_date, formData.end_time_str, isEndNextDay)
+
+    const follow_up_items = formData.follow_up_items.map(item => {
+      const todo: any = {
         content: item.content,
-        priority: item.priority,
-        responsible_person: item.responsible_person || undefined,
-        deadline: item.deadline || undefined,
-        remark: item.remark || undefined,
+        priority: item.priority || 'normal',
         status: item.status || 'pending'
-      }))
+      }
+      if (item.id) todo.id = item.id
+      if (item.responsible_person) todo.responsible_person = item.responsible_person
+      if (item.deadline) todo.deadline = item.deadline
+      if (item.remark) todo.remark = item.remark
+      return todo
+    })
+
+    const submitData: any = {
+      shift_type: formData.shift_type,
+      shift_date,
+      start_time,
+      end_time,
+      follow_up_items: follow_up_items.length > 0 ? follow_up_items : undefined
     }
+    if (formData.handover_person_name) submitData.handover_person_name = formData.handover_person_name
+    if (formData.takeover_person_name) submitData.takeover_person_name = formData.takeover_person_name
+    if (formData.water_volume_summary) submitData.water_volume_summary = formData.water_volume_summary
+    if (formData.water_quality_summary) submitData.water_quality_summary = formData.water_quality_summary
+    if (formData.equipment_status) submitData.equipment_status = formData.equipment_status
+    if (formData.abnormal_notes) submitData.abnormal_notes = formData.abnormal_notes
+    if (formData.remark) submitData.remark = formData.remark
 
     if (props.editData) {
       await productionApi.updateShiftHandover(props.editData.id, submitData)
@@ -325,10 +399,13 @@ const handleSubmit = async () => {
     }
     emit('success')
     handleCancel()
-  } catch (e) {
-    Message.success(props.editData ? '更新成功' : '创建成功')
-    emit('success')
-    handleCancel()
+  } catch (e: any) {
+    console.error('提交失败:', e)
+    if (e?.response?.data?.detail) {
+      Message.error(`提交失败：${e.response.data.detail}`)
+    } else {
+      Message.error('提交失败，请检查数据格式')
+    }
   } finally {
     submitLoading.value = false
   }
@@ -376,6 +453,14 @@ const handleCancel = () => {
   font-size: 14px;
   font-weight: 600;
   color: #165DFF;
+}
+
+.time-suggest {
+  padding-top: 4px;
+}
+
+.time-suggest :deep(.arco-tag) {
+  margin: 0;
 }
 
 :deep(.arco-tabs-content) {

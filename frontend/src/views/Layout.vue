@@ -69,6 +69,8 @@
             <a-menu-item key="production/alarm">异常告警列表</a-menu-item>
             <a-menu-item key="production/water-quality-warning">水质异常预警中心</a-menu-item>
             <a-menu-item key="production/sludge-transport">污泥清运调度</a-menu-item>
+            <a-menu-item key="production/dosing-record">药剂投加记录</a-menu-item>
+            <a-menu-item key="production/shift-handover">值班交接班</a-menu-item>
             <a-menu-item key="production/factory-map">厂区电子地图</a-menu-item>
           </a-sub-menu>
           

@@ -366,7 +366,20 @@ class ShiftHandoverCreate(ShiftHandoverBase):
     follow_up_items: Optional[List[HandoverFollowUpCreate]] = None
 
 
-class ShiftHandoverUpdate(ShiftHandoverBase):
+class ShiftHandoverUpdate(BaseModel):
+    shift_type: Optional[str] = None
+    shift_date: Optional[datetime] = None
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    handover_person_id: Optional[int] = None
+    handover_person_name: Optional[str] = None
+    takeover_person_id: Optional[int] = None
+    takeover_person_name: Optional[str] = None
+    water_volume_summary: Optional[str] = None
+    water_quality_summary: Optional[str] = None
+    equipment_status: Optional[str] = None
+    abnormal_notes: Optional[str] = None
+    remark: Optional[str] = None
     status: Optional[str] = None
     follow_up_items: Optional[List[HandoverFollowUpUpdate]] = None
 

@@ -185,6 +185,71 @@ INSERT INTO `abnormal_alarms` (`alarm_no`, `alarm_type`, `alarm_level`, `title`,
 ('ALM20240115003', '工况异常', 'normal', '进水流量波动', '进水流量超出正常范围', 750, 700, 'resolved', '2024-01-15 12:00:00');
 
 -- ----------------------------
+-- 值班交接班表
+-- ----------------------------
+DROP TABLE IF EXISTS `handover_follow_ups`;
+DROP TABLE IF EXISTS `shift_handovers`;
+CREATE TABLE `shift_handovers` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `handover_no` varchar(50) NOT NULL COMMENT '交接单号',
+  `shift_type` varchar(20) NOT NULL COMMENT '班次类型: morning/middle/night',
+  `shift_date` datetime NOT NULL COMMENT '交接日期',
+  `start_time` datetime NOT NULL COMMENT '当班开始时间',
+  `end_time` datetime NOT NULL COMMENT '当班结束时间',
+  `handover_person_id` int DEFAULT NULL COMMENT '交班人ID',
+  `handover_person_name` varchar(50) DEFAULT NULL COMMENT '交班人姓名',
+  `takeover_person_id` int DEFAULT NULL COMMENT '接班人ID',
+  `takeover_person_name` varchar(50) DEFAULT NULL COMMENT '接班人姓名',
+  `water_volume_summary` text COMMENT '水量运行摘要',
+  `water_quality_summary` text COMMENT '水质运行摘要',
+  `equipment_status` text COMMENT '设备启停及运行状态',
+  `abnormal_notes` text COMMENT '异常说明',
+  `status` varchar(20) DEFAULT 'draft' COMMENT '状态: draft/pending_confirm/confirmed/archived',
+  `handover_confirm_time` datetime DEFAULT NULL COMMENT '交班确认时间',
+  `takeover_confirm_time` datetime DEFAULT NULL COMMENT '接班确认时间',
+  `handover_signature` varchar(100) DEFAULT NULL COMMENT '交班签名',
+  `takeover_signature` varchar(100) DEFAULT NULL COMMENT '接班签名',
+  `remark` text COMMENT '备注',
+  `created_by` int DEFAULT NULL COMMENT '创建人ID',
+  `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_handover_no` (`handover_no`),
+  KEY `idx_shift_date` (`shift_date`),
+  KEY `idx_status` (`status`),
+  KEY `idx_handover_person` (`handover_person_name`),
+  KEY `idx_takeover_person` (`takeover_person_name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='值班交接班记录表';
+
+CREATE TABLE `handover_follow_ups` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `handover_id` int NOT NULL COMMENT '交接班记录ID',
+  `content` text NOT NULL COMMENT '事项内容',
+  `priority` varchar(20) DEFAULT 'normal' COMMENT '优先级: low/normal/high/urgent',
+  `deadline` datetime DEFAULT NULL COMMENT '截止时间',
+  `responsible_person` varchar(50) DEFAULT NULL COMMENT '责任人',
+  `status` varchar(20) DEFAULT 'pending' COMMENT '状态: pending/processing/completed/cancelled',
+  `completed_time` datetime DEFAULT NULL COMMENT '完成时间',
+  `remark` text COMMENT '备注',
+  `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_handover_id` (`handover_id`),
+  KEY `idx_status` (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='交接班待跟进事项表';
+
+INSERT INTO `shift_handovers` (`handover_no`, `shift_type`, `shift_date`, `start_time`, `end_time`, `handover_person_name`, `takeover_person_name`, `water_volume_summary`, `water_quality_summary`, `equipment_status`, `abnormal_notes`, `status`, `handover_confirm_time`, `takeover_confirm_time`, `handover_signature`, `takeover_signature`, `remark`) VALUES
+('SH20240115080001', 'morning', '2024-01-15 00:00:00', '2024-01-15 08:00:00', '2024-01-15 16:00:00', '张三', '李四', '本日早班处理水量约5200m³，进水流量稳定在600-680m³/h，出水流量正常', '出水COD 25-30mg/L，氨氮2.8-3.6mg/L，总磷0.3-0.45mg/L，均达标', '1#、2#提升泵运行，3#备用；生化池曝气正常；污泥回流泵运行正常', '2#沉淀池刮泥机有轻微异响，已通知设备班检查', 'confirmed', '2024-01-15 15:50:00', '2024-01-15 16:05:00', '张三', '李四', '注意夜间进水浓度变化'),
+('SH20240115160002', 'middle', '2024-01-15 00:00:00', '2024-01-15 16:00:00', '2024-01-16 00:00:00', '李四', '王五', '中班处理水量约4800m³，夜间进水略有下降', '出水各项指标稳定，COD 26mg/L，氨氮3.2mg/L', '设备运行正常，2#刮泥机已检修完成恢复运行', '', 'pending_confirm', '2024-01-15 23:55:00', NULL, '李四', NULL, ''),
+('SH20240114080001', 'morning', '2024-01-14 00:00:00', '2024-01-14 08:00:00', '2024-01-14 16:00:00', '赵六', '张三', '处理水量约5100m³，运行平稳', '出水COD 28mg/L，氨氮3.4mg/L，总磷0.4mg/L，达标排放', '全部设备正常运行', '', 'confirmed', '2024-01-14 15:58:00', '2024-01-14 16:02:00', '赵六', '张三', '');
+
+INSERT INTO `handover_follow_ups` (`handover_id`, `content`, `priority`, `deadline`, `responsible_person`, `status`, `completed_time`, `remark`) VALUES
+(1, '跟进2#沉淀池刮泥机检修情况', 'high', '2024-01-16 12:00:00', '设备班王工', 'completed', '2024-01-15 18:30:00', '已修复轴承异响问题'),
+(1, '核对PAC药剂库存，不足及时补充', 'normal', '2024-01-16 17:00:00', '李四', 'pending', NULL, ''),
+(2, '观察2#刮泥机运行状态，记录电流变化', 'normal', '2024-01-16 08:00:00', '王五', 'processing', NULL, '每2小时记录一次'),
+(2, '凌晨3点取样检测出水水质', 'low', '2024-01-16 03:00:00', '王五', 'pending', NULL, '');
+
+-- ----------------------------
 -- 系统配置表
 -- ----------------------------
 DROP TABLE IF EXISTS `system_configs`;

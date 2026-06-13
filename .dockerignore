@@ -13,6 +13,7 @@ build/
 .idea/
 .vscode/
 .trae/
+trae/
 prompt-tasks.md
 
 # Git

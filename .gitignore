@@ -17,6 +17,7 @@ build/
 .idea/
 .vscode/
 .trae/
+trae/
 *.swp
 *.swo
 

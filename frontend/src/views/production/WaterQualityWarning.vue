@@ -739,14 +739,19 @@ const updateTrendChart = () => {
 const fetchWarnings = async () => {
   loading.value = true
   try {
-    const res: any = await productionApi.getWaterQualityWarnings({
+    const params: any = {
       page: pagination.current,
       page_size: pagination.pageSize,
       indicator_type: filters.indicator_type || undefined,
       process_unit: filters.process_unit || undefined,
       status: filters.status || undefined,
       level: filters.level || undefined
-    })
+    }
+    if (filters.time_range && filters.time_range.length === 2) {
+      params.start_time = filters.time_range[0]
+      params.end_time = filters.time_range[1]
+    }
+    const res: any = await productionApi.getWaterQualityWarnings(params)
     warningList.value = res.items || []
     pagination.total = res.total || 0
     if (res.stats) {
@@ -763,7 +768,7 @@ const fetchWarnings = async () => {
 }
 
 const generateMockData = () => {
-  const mockData = [
+  const allMockData = [
     {
       id: '1',
       warning_no: 'WQW20240115001',
@@ -866,23 +871,117 @@ const generateMockData = () => {
       source: '在线监测',
       device_name: '生化池COD在线仪',
       snapshot_data: [110, 115, 118, 125, 122, 119, 117]
+    },
+    {
+      id: '6',
+      warning_no: 'WQW20240114001',
+      indicator_type: 'TN',
+      process_unit: 'outlet',
+      level: 'urgent',
+      status: 'resolved',
+      measured_value: 18.5,
+      limit_value: 15,
+      unit: 'mg/L',
+      deviation: 3.5,
+      deviation_percent: 23.3,
+      trigger_time: '2024-01-14 20:10:05',
+      duration: '2小时',
+      source: '在线监测',
+      device_name: '出水总氮分析仪',
+      confirmer: '赵工',
+      confirm_time: '2024-01-14 20:30:00',
+      root_cause: 'process_abnormal',
+      handler: '赵工',
+      handle_description: '加大内回流比，调整曝气强度',
+      snapshot_data: [13, 14, 15, 18.5, 17, 16, 15]
+    },
+    {
+      id: '7',
+      warning_no: 'WQW20240114002',
+      indicator_type: 'PH',
+      process_unit: 'biological',
+      level: 'normal',
+      status: 'resolved',
+      measured_value: 6.3,
+      limit_value: 6.5,
+      unit: '',
+      deviation: -0.2,
+      deviation_percent: -3.1,
+      trigger_time: '2024-01-14 08:25:30',
+      duration: '40分钟',
+      source: '在线监测',
+      device_name: '生化池pH计',
+      confirmer: '张工',
+      confirm_time: '2024-01-14 08:40:00',
+      root_cause: 'inlet_surge',
+      handler: '李工',
+      handle_description: '投加碱液调节pH，控制进水负荷',
+      snapshot_data: [6.7, 6.6, 6.5, 6.3, 6.4, 6.5, 6.6]
     }
   ]
 
-  warningList.value = mockData
-  pagination.total = mockData.length
+  let filtered = [...allMockData]
 
-  stats.total = 12
-  stats.pending = 2
-  stats.processing = 1
-  stats.resolved = 9
+  if (filters.indicator_type) {
+    filtered = filtered.filter(item => item.indicator_type === filters.indicator_type)
+  }
+  if (filters.process_unit) {
+    filtered = filtered.filter(item => item.process_unit === filters.process_unit)
+  }
+  if (filters.status) {
+    filtered = filtered.filter(item => item.status === filters.status)
+  }
+  if (filters.level) {
+    filtered = filtered.filter(item => item.level === filters.level)
+  }
+  if (filters.time_range && filters.time_range.length === 2 && filters.time_range[0] && filters.time_range[1]) {
+    const startTs = new Date(filters.time_range[0]).getTime()
+    const endTs = new Date(filters.time_range[1]).getTime()
+    filtered = filtered.filter(item => {
+      const itemTs = new Date(item.trigger_time).getTime()
+      return itemTs >= startTs && itemTs <= endTs
+    })
+  }
 
-  indicatorDistribution.value = [
-    { name: 'COD', label: 'COD', count: 5, percent: 42, color: '#165DFF' },
-    { name: 'NH3N', label: '氨氮', count: 3, percent: 25, color: '#00b42a' },
-    { name: 'TP', label: '总磷', count: 2, percent: 17, color: '#ff7d00' },
-    { name: 'SS', label: 'SS', count: 2, percent: 17, color: '#722ed1' }
-  ]
+  const startIdx = (pagination.current - 1) * pagination.pageSize
+  const pageData = filtered.slice(startIdx, startIdx + pagination.pageSize)
+
+  warningList.value = pageData
+  pagination.total = filtered.length
+
+  const countByIndicator: Record<string, number> = {}
+  filtered.forEach(item => {
+    countByIndicator[item.indicator_type] = (countByIndicator[item.indicator_type] || 0) + 1
+  })
+  const colorMap: Record<string, string> = {
+    COD: '#165DFF',
+    NH3N: '#00b42a',
+    TP: '#ff7d00',
+    SS: '#722ed1',
+    TN: '#f53f3f',
+    PH: '#14c9c9'
+  }
+  const labelMap: Record<string, string> = {
+    COD: 'COD',
+    NH3N: '氨氮',
+    TP: '总磷',
+    SS: 'SS',
+    TN: '总氮',
+    PH: 'pH'
+  }
+  const totalCount = filtered.length || 1
+  indicatorDistribution.value = Object.keys(countByIndicator).map(name => ({
+    name,
+    label: labelMap[name] || name,
+    count: countByIndicator[name],
+    percent: Math.round((countByIndicator[name] / totalCount) * 100),
+    color: colorMap[name] || '#165DFF'
+  }))
+
+  stats.total = filtered.length
+  stats.pending = filtered.filter(item => item.status === 'pending').length
+  stats.processing = filtered.filter(item => item.status === 'processing').length
+  stats.resolved = filtered.filter(item => item.status === 'resolved').length
 }
 
 const handleSearch = () => {

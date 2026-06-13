@@ -841,22 +841,22 @@ def get_factory_map_data(
 
     zones = []
     for config in zones_config:
-        parameters = get_params_by_zone(config["id"])
-        alarms = get_alarms_by_zone(config["id"])
-        equipments = get_equipments_by_zone(config["id"])
+        zone_parameters = get_params_by_zone(config["id"])
+        zone_alarms_list = get_alarms_by_zone(config["id"])
+        zone_equipments = get_equipments_by_zone(config["id"])
 
-        has_error = any(p.status == "error" for p in parameters) or any(a.level == "urgent" for a in alarms)
-        has_warning = any(p.status == "warning" for p in parameters) or any(a.level == "warning" for a in alarms)
+        has_error = any(p.status == "error" for p in zone_parameters) or any(a.level == "urgent" for a in zone_alarms_list)
+        has_warning = any(p.status == "warning" for p in zone_parameters) or any(a.level == "warning" for a in zone_alarms_list)
         status = "error" if has_error else "warning" if has_warning else "normal"
 
-        running = sum(1 for e in equipments if e.status == "running")
-        standby = sum(1 for e in equipments if e.status == "standby")
-        fault = sum(1 for e in equipments if e.status == "fault")
-        total = len(equipments)
+        running = sum(1 for e in zone_equipments if e.status == "running")
+        standby = sum(1 for e in zone_equipments if e.status == "standby")
+        fault = sum(1 for e in zone_equipments if e.status == "fault")
+        total = len(zone_equipments)
 
         stats = []
-        if parameters:
-            for param in parameters[:3]:
+        if zone_parameters:
+            for param in zone_parameters[:3]:
                 stats.append(ZoneStat(
                     label=param.name,
                     value=f"{param.value} {param.unit}",
@@ -866,15 +866,15 @@ def get_factory_map_data(
         zones.append(ZoneData(
             **config,
             status=status,
-            alarmCount=len(alarms),
+            alarmCount=len(zone_alarms_list),
             equipmentRunning=running,
             equipmentStandby=standby,
             equipmentFault=fault,
             equipmentTotal=total,
             stats=stats,
-            parameters=parameters,
-            recentAlarms=alarms,
-            equipmentList=equipments
+            parameters=zone_parameters,
+            recentAlarms=zone_alarms_list,
+            equipmentList=zone_equipments
         ))
 
     return FactoryMapResponse(

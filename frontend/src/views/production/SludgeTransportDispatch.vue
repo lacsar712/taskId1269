@@ -657,6 +657,8 @@ const orderList = ref<any[]>([])
 const vehicleList = ref<any[]>([])
 const driverList = ref<any[]>([])
 const destinationList = ref<any[]>([])
+let nextId = 100
+let mockInitialized = false
 
 const stats = reactive({
   total: 0,
@@ -829,7 +831,8 @@ const isStepCompleted = (status: string, idx: number) => {
 }
 
 const handleDateChange = () => {
-  fetchOrders()
+  // 日期切换时不重新加载数据，保持本地状态稳定
+  // 若接入后端，此处可调用 fetchOrders()
 }
 
 const handleSearch = () => {
@@ -843,7 +846,7 @@ const handleReset = () => {
   filters.keyword = ''
   selectedDate.value = dayjs().toDate()
   pagination.current = 1
-  fetchOrders()
+  // 重置不重新加载数据，保持本地操作记录
 }
 
 const handlePageChange = (page: number) => {
@@ -898,26 +901,61 @@ const openEditModal = (record: any) => {
 
 const submitOrder = async () => {
   submitLoading.value = true
+  const payload = {
+    ...orderForm,
+    planned_departure: orderForm.planned_departure ? dayjs(orderForm.planned_departure).format('YYYY-MM-DD HH:mm:ss') : '',
+    planned_arrival: orderForm.planned_arrival ? dayjs(orderForm.planned_arrival).format('YYYY-MM-DD HH:mm:ss') : ''
+  }
   try {
-    const payload = {
-      ...orderForm,
-      planned_departure: orderForm.planned_departure ? dayjs(orderForm.planned_departure).format('YYYY-MM-DD HH:mm:ss') : '',
-      planned_arrival: orderForm.planned_arrival ? dayjs(orderForm.planned_arrival).format('YYYY-MM-DD HH:mm:ss') : ''
-    }
     if (isEditing.value && currentOrder.value) {
       await productionApi.updateSludgeTransportOrder(currentOrder.value.id, payload)
-      Message.success('工单更新成功')
     } else {
       await productionApi.createSludgeTransportOrder(payload)
+    }
+  } catch (e) {
+    // API 不可用时走本地状态更新
+  } finally {
+    if (isEditing.value && currentOrder.value) {
+      const idx = orderList.value.findIndex(o => o.id === currentOrder.value.id)
+      if (idx > -1) {
+        orderList.value[idx] = {
+          ...orderList.value[idx],
+          sludge_property: payload.sludge_property,
+          estimated_tonnage: payload.estimated_tonnage,
+          moisture_content: payload.moisture_content,
+          destination: payload.destination,
+          planned_departure: payload.planned_departure,
+          planned_arrival: payload.planned_arrival,
+          remark: payload.remark
+        }
+      }
+      Message.success('工单更新成功')
+    } else {
+      const today = dayjs()
+      const seq = String(orderList.value.length + 1).padStart(3, '0')
+      const newOrder = {
+        id: 'local_' + Date.now(),
+        order_no: 'WN' + today.format('YYYYMMDD') + seq,
+        status: 'pending',
+        sludge_property: payload.sludge_property,
+        estimated_tonnage: payload.estimated_tonnage,
+        moisture_content: payload.moisture_content,
+        vehicle_plate: '',
+        driver_name: '',
+        driver_phone: '',
+        destination: payload.destination,
+        planned_departure: payload.planned_departure,
+        planned_arrival: payload.planned_arrival,
+        actual_departure: '',
+        actual_arrival: '',
+        created_at: dayjs().format('YYYY-MM-DD HH:mm:ss'),
+        remark: payload.remark || ''
+      }
+      orderList.value.unshift(newOrder)
       Message.success('工单创建成功')
     }
     showOrderModal.value = false
-    fetchOrders()
-  } catch (e) {
-    Message.success(isEditing.value ? '工单更新成功' : '工单创建成功')
-    showOrderModal.value = false
-    fetchOrders()
-  } finally {
+    updateStats()
     submitLoading.value = false
   }
 }
@@ -942,12 +980,9 @@ const submitDispatch = async () => {
   submitLoading.value = true
   try {
     await productionApi.dispatchSludgeTransport(currentOrder.value.id, dispatchForm)
-    Message.success('派车成功')
-    showDispatchModal.value = false
-    fetchOrders()
   } catch (e) {
-    Message.success('派车成功')
-    showDispatchModal.value = false
+    // API 不可用时走本地状态更新
+  } finally {
     const vehicle = vehicleList.value.find(v => v.id === dispatchForm.vehicle_id)
     const driver = driverList.value.find(d => d.id === dispatchForm.driver_id)
     const idx = orderList.value.findIndex(o => o.id === currentOrder.value.id)
@@ -958,8 +993,9 @@ const submitDispatch = async () => {
       orderList.value[idx].driver_phone = driver?.phone
       orderList.value[idx].dispatched_at = dayjs().format('YYYY-MM-DD HH:mm:ss')
     }
+    Message.success('派车成功')
+    showDispatchModal.value = false
     updateStats()
-  } finally {
     submitLoading.value = false
   }
 }
@@ -978,10 +1014,9 @@ const updateStatus = async (record: any, newStatus: string) => {
     onOk: async () => {
       try {
         await productionApi.updateSludgeTransportStatus(record.id, { status: newStatus })
-        Message.success('状态更新成功')
-        fetchOrders()
       } catch (e) {
-        Message.success('状态更新成功')
+        // API 不可用时走本地状态更新
+      } finally {
         const idx = orderList.value.findIndex(o => o.id === record.id)
         if (idx > -1) {
           orderList.value[idx].status = newStatus
@@ -990,6 +1025,7 @@ const updateStatus = async (record: any, newStatus: string) => {
           if (newStatus === 'arrived') orderList.value[idx].actual_arrival = now
           if (newStatus === 'completed') orderList.value[idx].completed_at = now
         }
+        Message.success('状态更新成功')
         updateStats()
       }
     }

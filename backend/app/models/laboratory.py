@@ -127,3 +127,56 @@ class Standard(Base):
     content = Column(Text)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class Reagent(Base):
+    """化验试剂库存"""
+    __tablename__ = "reagents"
+
+    id = Column(Integer, primary_key=True, index=True)
+    reagent_no = Column(String(50), unique=True, nullable=False)
+    name = Column(String(100), nullable=False)
+    specification = Column(String(100))  # 规格
+    manufacturer = Column(String(100))  # 生产厂家
+    current_stock = Column(Float, default=0)  # 当前库存量
+    min_safe_stock = Column(Float, default=0)  # 最低安全库存
+    storage_location = Column(String(100))  # 存放位置
+    expiry_date = Column(Date)  # 有效期
+    unit = Column(String(20), default="瓶")  # 单位
+    category = Column(String(50))  # 试剂分类
+    purity = Column(String(50))  # 纯度等级
+    cas_no = Column(String(50))  # CAS号
+    remarks = Column(Text)
+    status = Column(String(20), default="active")  # active, inactive
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class ReagentReplenishment(Base):
+    """试剂补货申请"""
+    __tablename__ = "reagent_replenishments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    application_no = Column(String(50), unique=True, nullable=False)
+    reagent_id = Column(Integer, nullable=False)
+    reagent_name = Column(String(100))
+    specification = Column(String(100))
+    apply_quantity = Column(Float, nullable=False)  # 申请数量
+    unit = Column(String(20))
+    urgency = Column(String(20), default="normal")  # urgent, normal, low
+    purpose = Column(Text)  # 用途说明
+    applicant_id = Column(Integer)
+    applicant_name = Column(String(50))
+    apply_time = Column(DateTime, server_default=func.now())
+    status = Column(String(20), default="pending")  # pending, approved, rejected, purchasing, completed
+    approver_id = Column(Integer)
+    approver_name = Column(String(50))
+    approve_time = Column(DateTime)
+    approve_remark = Column(Text)
+    purchase_quantity = Column(Float)  # 实际采购数量
+    purchase_status = Column(String(20), default="not_started")  # not_started, in_progress, delivered, completed
+    purchaser = Column(String(50))
+    expected_date = Column(Date)  # 预计到货日期
+    purchase_remark = Column(Text)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())

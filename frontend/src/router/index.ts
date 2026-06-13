@@ -258,6 +258,18 @@ const router = createRouter({
               name: 'StandardLibrary',
               component: () => import('@/views/laboratory/StandardLibrary.vue'),
               meta: { title: '标准库' }
+            },
+            {
+              path: 'reagent',
+              name: 'ReagentInventory',
+              component: () => import('@/views/laboratory/ReagentInventory.vue'),
+              meta: { title: '试剂库存管理' }
+            },
+            {
+              path: 'replenishment',
+              name: 'ReagentReplenishment',
+              component: () => import('@/views/laboratory/ReagentReplenishment.vue'),
+              meta: { title: '试剂补货申请' }
             }
           ]
         },

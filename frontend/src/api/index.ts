@@ -128,7 +128,19 @@ export const laboratoryApi = {
   getData: (params?: any) => request.get('/laboratory/data', { params }),
   getReports: (params?: any) => request.get('/laboratory/reports', { params }),
   getQC: (params?: any) => request.get('/laboratory/qc', { params }),
-  getStandards: (params?: any) => request.get('/laboratory/standards', { params })
+  getStandards: (params?: any) => request.get('/laboratory/standards', { params }),
+  getReagents: (params?: any) => request.get('/laboratory/reagents', { params }),
+  getReagentStats: () => request.get('/laboratory/reagents/stats'),
+  getReagentById: (id: number) => request.get(`/laboratory/reagents/${id}`),
+  createReagent: (data: any) => request.post('/laboratory/reagents', data),
+  updateReagent: (id: number, data: any) => request.put(`/laboratory/reagents/${id}`, data),
+  deleteReagent: (id: number) => request.delete(`/laboratory/reagents/${id}`),
+  getReagentCategories: () => request.get('/laboratory/reagents/categories/list'),
+  getReplenishments: (params?: any) => request.get('/laboratory/reagent-replenishments', { params }),
+  getReplenishmentById: (id: number) => request.get(`/laboratory/reagent-replenishments/${id}`),
+  createReplenishment: (data: any) => request.post('/laboratory/reagent-replenishments', data),
+  approveReplenishment: (id: number, data: any) => request.put(`/laboratory/reagent-replenishments/${id}/approve`, data),
+  updatePurchaseStatus: (id: number, data: any) => request.put(`/laboratory/reagent-replenishments/${id}/purchase`, data)
 }
 
 // 报表管理接口

@@ -103,6 +103,8 @@
             <a-menu-item key="laboratory/report">报告管理</a-menu-item>
             <a-menu-item key="laboratory/qc">质控管理</a-menu-item>
             <a-menu-item key="laboratory/standard">标准库</a-menu-item>
+            <a-menu-item key="laboratory/reagent">试剂库存管理</a-menu-item>
+            <a-menu-item key="laboratory/replenishment">试剂补货申请</a-menu-item>
           </a-sub-menu>
           
           <a-sub-menu key="report">

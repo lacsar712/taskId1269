@@ -17,6 +17,10 @@
             <a-option value="deep">深度处理</a-option>
             <a-option value="sludge">污泥处理</a-option>
           </a-select>
+          <a-button @click="navigateToFactoryMap">
+            <template #icon><icon-location /></template>
+            {{ mapButtonText }}
+          </a-button>
           <a-button type="primary" @click="fetchParameters">
             <template #icon><icon-refresh /></template>
             刷新数据
@@ -82,11 +86,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { ref, onMounted, watch, computed } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { productionApi } from '@/api'
 
 const route = useRoute()
+const router = useRouter()
 
 const sectionMapping: Record<string, string> = {
   'inlet': 'pretreatment',
@@ -109,6 +114,14 @@ const sectionNameMapping: Record<string, string> = {
 const selectedSection = ref('')
 const selectedZone = ref('')
 const parameters = ref<any[]>([])
+
+const isFromMap = computed(() => !!route.query.section)
+
+const mapButtonText = computed(() => isFromMap.value ? '返回厂区电子地图' : '打开厂区电子地图')
+
+const navigateToFactoryMap = () => {
+  router.push('/production/factory-map')
+}
 
 const processStages = ref([
   { 

@@ -360,7 +360,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { Message } from '@arco-design/web-vue'
 import { productionApi } from '@/api'
@@ -374,6 +374,12 @@ const hoverZone = ref<any>(null)
 const activeTab = ref('params')
 const updateTime = ref('')
 const tooltipPosition = reactive({ x: 0, y: 0 })
+
+watch(showDetailModal, (val) => {
+  if (!val) {
+    selectedZone.value = null
+  }
+})
 
 const tooltipStyle = computed(() => ({
   left: tooltipPosition.x + 'px',

@@ -288,7 +288,9 @@ const trendChartRef = ref<HTMLElement | null>(null)
 const complianceChartRef = ref<HTMLElement | null>(null)
 let trendChartInstance: echarts.ECharts | null = null
 let complianceChartInstance: echarts.ECharts | null = null
-let timer: number | null = null
+let clockTimer: number | null = null
+let refreshTimer: number | null = null
+const REFRESH_INTERVAL = 5 * 60 * 1000
 
 const waterVolume = reactive({
   inflow: '0',
@@ -439,6 +441,10 @@ const refreshData = async () => {
     generateMockData()
   } finally {
     loading.value = false
+    nextTick(() => {
+      if (trendChartInstance) initTrendChart()
+      if (complianceChartInstance) initComplianceChart()
+    })
     setTimeout(() => {
       isUpdating.value = false
     }, 800)
@@ -726,9 +732,13 @@ const handleResize = () => {
 
 onMounted(async () => {
   updateDateTime()
-  timer = window.setInterval(() => {
+  clockTimer = window.setInterval(() => {
     updateDateTime()
   }, 1000)
+
+  refreshTimer = window.setInterval(() => {
+    refreshData()
+  }, REFRESH_INTERVAL)
 
   await refreshData()
 
@@ -744,7 +754,8 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
-  if (timer) clearInterval(timer)
+  if (clockTimer) clearInterval(clockTimer)
+  if (refreshTimer) clearInterval(refreshTimer)
   window.removeEventListener('resize', handleResize)
   trendChartInstance?.dispose()
   complianceChartInstance?.dispose()

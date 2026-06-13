@@ -88,6 +88,10 @@
             <a-menu-item key="production/dosing-record">药剂投加记录</a-menu-item>
             <a-menu-item key="production/shift-handover">值班交接班</a-menu-item>
             <a-menu-item key="production/factory-map">厂区电子地图</a-menu-item>
+            <a-menu-item key="production/water-quality-display">
+              <template #icon><icon-display /></template>
+              出水水质公示牌
+            </a-menu-item>
           </a-sub-menu>
           
           <a-sub-menu key="safety">
